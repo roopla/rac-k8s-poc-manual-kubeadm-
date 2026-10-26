@@ -1,0 +1,32 @@
+module rac-ocne 1.0;
+
+# SELinux allowances for Oracle RAC pods that run systemd as PID 1 (domain container_init_t).
+# Grants the same permissions as the Oracle "RAC on OCNE" doc's rac-ocne module.
+# Built and loaded by 02-prep-golden.sh:
+#   make -f /usr/share/selinux/devel/Makefile rac-ocne.pp && semodule -i rac-ocne.pp
+
+require {
+        type container_init_t;
+        type container_runtime_t;
+        type container_file_t;
+        type kernel_t;
+        type bin_t;
+        type lib_t;
+        type textrel_shlib_t;
+        class file { getattr map execute execmod setattr };
+        class system syslog_read;
+}
+
+# Inspect files owned by the container runtime
+allow container_init_t container_runtime_t:file getattr;
+
+# Map and execute binaries from bin_t paths (Oracle tools on the /u01 host mount)
+allow container_init_t bin_t:file { map execute };
+
+# Text relocations in Oracle libraries and binaries
+allow container_init_t container_file_t:file execmod;
+allow container_init_t lib_t:file execmod;
+allow container_init_t textrel_shlib_t:file setattr;
+
+# Read the kernel log (dmesg), used by Clusterware diagnostics
+allow container_init_t kernel_t:system syslog_read;

@@ -1,0 +1,47 @@
+# 07-multus-rac-nad.yaml
+# RAC private networks for Multus: macvlan on the workers' enp0s8 / enp0s9.
+# Same subnets and ranges as the Oracle doc. Differences from the doc:
+#   - master is enp0s8 / enp0s9 (VirtualBox names) instead of ens5 / ens6
+#   - "capabilities": {"ips": true} so the per-pod "ips" in the StatefulSet annotation
+#     (10.0.11.141, .142 ...) are honoured. Without it, host-local IPAM picks addresses on
+#     its own per node, and both workers can hand out the same IP.
+# Apply after creating the namespace:  kubectl create namespace multus-rac
+apiVersion: k8s.cni.cncf.io/v1
+kind: NetworkAttachmentDefinition
+metadata:
+  name: macvlan-conf1
+  namespace: multus-rac
+spec:
+  config: '{
+    "cniVersion": "0.3.1",
+    "type": "macvlan",
+    "master": "enp0s8",
+    "mode": "bridge",
+    "capabilities": { "ips": true },
+    "ipam": {
+      "type": "host-local",
+      "subnet": "10.0.11.0/24",
+      "rangeStart": "10.0.11.140",
+      "rangeEnd": "10.0.11.150"
+    }
+  }'
+---
+apiVersion: k8s.cni.cncf.io/v1
+kind: NetworkAttachmentDefinition
+metadata:
+  name: macvlan-conf2
+  namespace: multus-rac
+spec:
+  config: '{
+    "cniVersion": "0.3.1",
+    "type": "macvlan",
+    "master": "enp0s9",
+    "mode": "bridge",
+    "capabilities": { "ips": true },
+    "ipam": {
+      "type": "host-local",
+      "subnet": "10.0.12.0/24",
+      "rangeStart": "10.0.12.140",
+      "rangeEnd": "10.0.12.150"
+    }
+  }'

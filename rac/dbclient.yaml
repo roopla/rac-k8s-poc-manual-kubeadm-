@@ -1,0 +1,26 @@
+# dbclient.yaml - client pod for the SCAN test inside the cluster (Oracle doc, "Requirements to Connect
+# to the Database with a Client Inside the Kubernetes Cluster"). Its own namespace proves the full
+# SCAN name works across namespaces. Oracle Linux 9 image already on worker1 (used to build the RAC
+# image); Instant Client SQL*Plus is installed with dnf after it starts. 1536Mi limit: with 512Mi,
+# dnf was OOM-killed (exit 137) loading the repository metadata.
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: rac-client
+---
+apiVersion: v1
+kind: Pod
+metadata:
+  name: dbclient
+  namespace: rac-client
+spec:
+  nodeSelector:
+    kubernetes.io/hostname: worker1
+  containers:
+  - name: client
+    image: container-registry.oracle.com/os/oraclelinux:9
+    imagePullPolicy: IfNotPresent
+    command: ["sleep", "infinity"]
+    resources:
+      requests: { cpu: 100m, memory: 256Mi }
+      limits:   { cpu: 500m, memory: 1536Mi }

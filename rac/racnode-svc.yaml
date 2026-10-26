@@ -1,0 +1,65 @@
+# racnode-svc.yaml - headless services for the RAC node names, VIPs and SCAN (Oracle doc,
+# "Create the Oracle RAC Pods" steps 4-5). CoreDNS resolves each name to the pod IP(s) behind it:
+#   racnode1-0, racnode1-0-vip -> racnode1-0     racnode2-0, racnode2-0-vip -> racnode2-0
+#   racnode-scan -> both pods (label cluster=racnode)
+# publishNotReadyAddresses: the names must resolve before the pods are Ready (port 1521 is only
+# open once Grid is installed).
+apiVersion: v1
+kind: Service
+metadata:
+  name: racnode1-0
+  namespace: rac
+  labels: { statefulset.kubernetes.io/pod-name: racnode1-0 }
+spec:
+  clusterIP: None
+  type: ClusterIP
+  publishNotReadyAddresses: true
+  selector: { statefulset.kubernetes.io/pod-name: racnode1-0 }
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: racnode1-0-vip
+  namespace: rac
+  labels: { statefulset.kubernetes.io/pod-name: racnode1-0 }
+spec:
+  clusterIP: None
+  type: ClusterIP
+  publishNotReadyAddresses: true
+  selector: { statefulset.kubernetes.io/pod-name: racnode1-0 }
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: racnode2-0
+  namespace: rac
+  labels: { statefulset.kubernetes.io/pod-name: racnode2-0 }
+spec:
+  clusterIP: None
+  type: ClusterIP
+  publishNotReadyAddresses: true
+  selector: { statefulset.kubernetes.io/pod-name: racnode2-0 }
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: racnode2-0-vip
+  namespace: rac
+  labels: { statefulset.kubernetes.io/pod-name: racnode2-0 }
+spec:
+  clusterIP: None
+  type: ClusterIP
+  publishNotReadyAddresses: true
+  selector: { statefulset.kubernetes.io/pod-name: racnode2-0 }
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: racnode-scan
+  namespace: rac
+  labels: { cluster: racnode }
+spec:
+  clusterIP: None
+  type: ClusterIP
+  publishNotReadyAddresses: true
+  selector: { cluster: racnode }

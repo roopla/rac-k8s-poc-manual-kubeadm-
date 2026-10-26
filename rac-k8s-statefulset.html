@@ -1,0 +1,1126 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>RAC StatefulSet Explained</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wght@500;600;700;800&family=Source+Sans+3:ital,wght@0,400;0,600;0,700;1,400&family=JetBrains+Mono:wght@400;600&display=swap">
+<style>/* Layout: runbook. Hero band, sticky phase index on the left, one reading column with
+   dark command panels; each panel is labelled with where it runs (PC, VM, pod). */
+:root {
+  --bg: #f6f7f8; --surface: #ffffff; --fg: #17212b; --muted: #57636f; --line: #d5dbe1;
+  --accent: #0b6e78; --accent-soft: #e1f0f1; --band: #eef2f4;
+  --code-bg: #121b23; --code-fg: #e3e9ef; --code-muted: #8b9aa8;
+  --win: #2a5db0; --win-soft: #e3ecfa; --node: #2c7a4b; --node-soft: #e1f2e7; --pod: #6a49b5; --pod-soft: #ece6f8;
+  --tk-key: #ff9e7a; --tk-str: #a5d6a7; --tk-var: #8ecbff; --tk-num: #f3c969; --tk-com: #7f8e9c;
+  --font-display: "Archivo", "Helvetica Neue", Arial, sans-serif;
+  --font-body: "Source Sans 3", "Segoe UI", Roboto, Arial, sans-serif;
+  --font-mono: "JetBrains Mono", "Cascadia Mono", Consolas, "Liberation Mono", monospace;
+}
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) {
+  --bg: #0e1419; --surface: #141c23; --fg: #e3e9ee; --muted: #9caab6; --line: #2a3641;
+  --accent: #55bcc6; --accent-soft: #123239; --band: #18222b;
+  --code-bg: #0a1016; --code-fg: #e3e9ef; --code-muted: #8b9aa8;
+  --win: #8db4f2; --win-soft: #18283f; --node: #79c79a; --node-soft: #152b20; --pod: #b9a2f0; --pod-soft: #251d3a;
+  color-scheme: dark; } }
+:root[data-theme="dark"] {
+  --bg: #0e1419; --surface: #141c23; --fg: #e3e9ee; --muted: #9caab6; --line: #2a3641;
+  --accent: #55bcc6; --accent-soft: #123239; --band: #18222b;
+  --code-bg: #0a1016; --code-fg: #e3e9ef; --code-muted: #8b9aa8;
+  --win: #8db4f2; --win-soft: #18283f; --node: #79c79a; --node-soft: #152b20; --pod: #b9a2f0; --pod-soft: #251d3a;
+  color-scheme: dark; }
+
+* { box-sizing: border-box; }
+body { background: var(--bg); color: var(--fg); font: 17px/1.6 var(--font-body); margin: 0; }
+a { color: var(--accent); text-underline-offset: 2px; }
+a:focus-visible, button:focus-visible, summary:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; border-radius: 4px; }
+
+.hero { background: var(--surface); border-bottom: 1px solid var(--line);
+  padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px)); padding-block: 40px 28px; }
+.hero-in { max-width: 1120px; margin: 0 auto; display: grid; gap: 14px; }
+.kicker { margin: 0; font: 600 13px/1.3 var(--font-display); letter-spacing: .08em; text-transform: uppercase; color: var(--accent); }
+h1 { margin: 0; font: 800 clamp(34px, 5vw, 54px)/1.05 var(--font-display); letter-spacing: -.02em; text-wrap: balance; }
+.lede { margin: 0; max-width: 66ch; font-size: 19px; color: var(--muted); }
+.stack { list-style: none; margin: 0; padding: 0; display: flex; flex-wrap: wrap; gap: 8px; }
+.stack li { font: 500 13px/1 var(--font-mono); padding: 7px 10px; border: 1px solid var(--line); border-radius: 6px; background: var(--bg); }
+.meta { margin: 0; font-size: 15px; color: var(--muted); max-width: 90ch; }
+.pdf { margin-left: 8px; font-weight: 600; }
+.legend .where { justify-self: start; }
+.legend { display: grid; grid-template-columns: max-content 1fr; gap: 6px 12px; align-items: center; font-size: 14px; color: var(--muted); margin-top: 4px; }
+
+.where { display: inline-block; font: 600 12px/1 var(--font-mono); padding: 5px 8px; border-radius: 5px; white-space: nowrap; }
+.where.win { color: var(--win); background: var(--win-soft); }
+.where.node { color: var(--node); background: var(--node-soft); }
+.where.pod { color: var(--pod); background: var(--pod-soft); }
+.where.file { color: var(--code-muted); background: transparent; border: 1px solid #2a3641; }
+
+.layout { max-width: 1120px; margin: 0 auto; display: grid; grid-template-columns: 250px minmax(0, 1fr); gap: 40px;
+  padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px)); padding-block: 32px 64px; }
+.toc { position: sticky; top: calc(env(safe-area-inset-top, 0px) + 16px); align-self: start; max-height: calc(100vh - 32px); overflow: auto; font-size: 15px; }
+.toc summary { font: 700 13px/1 var(--font-display); text-transform: uppercase; letter-spacing: .08em; color: var(--muted); cursor: pointer; padding: 4px 0 10px; }
+.toc ol { list-style: none; margin: 0; padding: 0; display: grid; gap: 2px; }
+.toc a { display: grid; grid-template-columns: 26px 1fr; gap: 4px; padding: 6px 8px; border-radius: 6px; color: var(--fg); text-decoration: none; line-height: 1.3; }
+.toc a:hover { background: var(--accent-soft); }
+.toc a.active { background: var(--accent-soft); color: var(--accent); font-weight: 600; }
+.toc-num { font: 600 12px/1.6 var(--font-mono); color: var(--muted); font-variant-numeric: tabular-nums; }
+
+.content { min-width: 0; max-width: 820px; }
+.sec { padding-bottom: 28px; margin-bottom: 36px; border-bottom: 1px solid var(--line); }
+.sec:last-of-type { border-bottom: 0; }
+h2 { font: 700 30px/1.15 var(--font-display); letter-spacing: -.01em; margin: 0 0 18px; text-wrap: balance; scroll-margin-top: 16px; display: grid; gap: 6px; }
+.eyebrow { font: 600 13px/1 var(--font-mono); color: var(--accent); letter-spacing: .04em; text-transform: uppercase; }
+h3 { font: 700 20px/1.25 var(--font-display); margin: 32px 0 10px; scroll-margin-top: 16px; text-wrap: balance; }
+p, li { max-width: 72ch; }
+p { margin: 0 0 14px; }
+ul, ol { margin: 0 0 14px; padding-left: 1.3em; }
+li { margin: 4px 0; }
+strong { font-weight: 700; }
+code { font: 500 .86em var(--font-mono); background: var(--band); padding: .1em .35em; border-radius: 4px; overflow-wrap: anywhere; }
+
+.cmd { position: relative; margin: 12px 0 18px; background: var(--code-bg); border-radius: 10px; overflow: hidden; }
+.cmd-head { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; padding: 10px 86px 0 14px; }
+.where-note { font: 12px/1.4 var(--font-mono); color: var(--code-muted); }
+.copy { position: absolute; top: 8px; right: 8px; font: 600 12px/1 var(--font-body); color: var(--code-fg); background: transparent; border: 1px solid #3a4754; border-radius: 6px; padding: 7px 10px; cursor: pointer; }
+.copy:hover { background: #1f2b36; }
+.copy.done { color: #a5d6a7; border-color: #3f6b48; }
+.cmd pre { margin: 0; padding: 12px 14px 16px; overflow-x: auto; }
+.cmd pre code { background: none; padding: 0; color: var(--code-fg); font: 400 13.5px/1.55 var(--font-mono); white-space: pre; overflow-wrap: normal; }
+.cmd .k, .cmd .kn, .cmd .kd, .cmd .ow { color: var(--tk-key); }
+.cmd .s, .cmd .s1, .cmd .s2, .cmd .sh, .cmd .sb, .cmd .sd, .cmd .se { color: var(--tk-str); }
+.cmd .nv, .cmd .nb, .cmd .vg, .cmd .nf { color: var(--tk-var); }
+.cmd .m, .cmd .mi, .cmd .mf { color: var(--tk-num); }
+.cmd .c, .cmd .c1, .cmd .cm, .cmd .ch { color: var(--tk-com); font-style: italic; }
+
+.table-wrap { overflow-x: auto; margin: 12px 0 18px; border: 1px solid var(--line); border-radius: 10px; background: var(--surface); }
+table { border-collapse: collapse; width: 100%; font-size: 15px; }
+th, td { text-align: left; vertical-align: top; padding: 9px 12px; border-bottom: 1px solid var(--line); }
+th { font: 700 13px/1.3 var(--font-display); text-transform: uppercase; letter-spacing: .05em; color: var(--muted); background: var(--band); }
+tr:last-child td { border-bottom: 0; }
+
+.diagram { margin: 18px 0 22px; padding: 12px; background: var(--surface); border: 1px solid var(--line); border-radius: 12px; overflow-x: auto; }
+.diagram svg { display: block; width: 100%; min-width: 620px; height: auto; font-family: var(--font-body); }
+.diagram figcaption { font-size: 14px; color: var(--muted); margin-top: 6px; }
+.d-box { fill: none; stroke: var(--muted); stroke-width: 1.25; }
+.d-pod { fill: var(--accent-soft); stroke: var(--accent); stroke-width: 2; }
+.d-band { fill: var(--band); stroke: var(--line); stroke-width: 1; }
+.d-line line { stroke: var(--muted); stroke-width: 1.25; fill: none; }
+.d-arrowhead { fill: var(--muted); }
+.d-title { font: 700 15px var(--font-display); fill: var(--fg); }
+.d-name { font-size: 13px; font-weight: 700; fill: var(--fg); }
+.d-text { font-size: 11.5px; fill: var(--fg); }
+.d-quiet { font-size: 11.5px; fill: var(--muted); }
+.d-small { font-size: 10.5px; fill: var(--muted); }
+
+.foot { color: var(--muted); font-size: 14px; padding-top: 8px; }
+
+@media (max-width: 960px) {
+  .layout { grid-template-columns: minmax(0, 1fr); gap: 16px; }
+  .toc { position: static; max-height: none; border: 1px solid var(--line); border-radius: 10px; padding: 10px 12px; background: var(--surface); }
+  .legend { grid-template-columns: 1fr; }
+  .legend span:not(.where) { margin-bottom: 6px; }
+}
+@media (prefers-reduced-motion: reduce) { * { scroll-behavior: auto !important; } }
+@media (prefers-reduced-motion: no-preference) { html { scroll-behavior: smooth; } }
+
+/* print / PDF */
+.shell.print .toc, .shell.print .copy { display: none; }
+.shell.print .layout { grid-template-columns: minmax(0, 1fr); padding-block: 8px; }
+.shell.print .content { max-width: none; }
+.shell.print .cmd pre code { white-space: pre-wrap; overflow-wrap: anywhere; font-size: 11.5px; }
+.shell.print .sec { break-before: page; border-bottom: 0; }
+.shell.print .cmd, .shell.print .diagram, .shell.print tr { break-inside: avoid; }
+.shell.print .diagram svg { min-width: 0; }
+.shell.print .hero { padding-block: 24px; }
+@media print {
+  .toc, .copy { display: none; }
+  .layout { grid-template-columns: minmax(0, 1fr); }
+  .cmd pre code { white-space: pre-wrap; }
+}
+@media (max-width: 640px) { table { min-width: 560px; } h2 { font-size: 26px; } }
+.shell.print { font-size: 12.5px; line-height: 1.5; }
+.shell.print h1 { font-size: 34px; }
+.shell.print .lede { font-size: 14px; }
+.shell.print h2 { font-size: 22px; }
+.shell.print h3 { font-size: 15px; margin-top: 18px; }
+.shell.print p, .shell.print li { max-width: none; }
+.shell.print table { font-size: 11.5px; }
+.shell.print .cmd pre code { font-size: 10px; line-height: 1.45; }
+.shell.print .stack li, .shell.print .where { font-size: 10px; }
+.shell.print .sec { break-before: auto; }
+.shell.print .sec h2 { break-after: avoid; }
+.shell.print h3 { break-after: avoid; }
+
+.connect { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 8px; padding: 8px 14px 0; font: 12px/1.5 var(--font-mono); color: var(--code-muted); }
+.connect-lbl { font: 600 11px/1 var(--font-body, inherit); letter-spacing: .04em; text-transform: uppercase; color: var(--code-muted); margin-right: 2px; }
+.conn-cmd { display: inline-flex; align-items: center; gap: 6px; }
+.conn-cmd code { color: var(--code-fg, inherit); background: rgba(127,127,127,.16); padding: 2px 6px; border-radius: 4px; }
+.copy-mini { font: 600 11px/1 var(--font-body, inherit); padding: 4px 8px; border-radius: 6px; border: 1px solid rgba(127,127,127,.4); background: transparent; color: var(--code-muted); cursor: pointer; }
+.copy-mini:hover { color: var(--code-fg, inherit); }
+.copy-mini.done { color: var(--accent, #2bb3a3); border-color: currentColor; }
+.print .copy-mini { display: none; }
+</style>
+</head>
+<body>
+<div class="shell ">
+<header class="hero">
+  <div class="hero-in">
+    <p class="kicker">Companion to the RAC on kubeadm lab guide</p>
+    <h1>The StatefulSet, line by line</h1>
+    <p class="lede">Guide step 10.4 turns two RAC servers into two StatefulSets. Every field of that manifest, why it is there, where Grid uses it, what happens when you apply it, what survives a restart, and how to see each one on the running cluster.</p>
+    <ul class="stack">
+      <li>StatefulSet</li><li>nodeAffinity</li><li>sysctls · capabilities</li><li>hugepages · QoS</li><li>volumeDevices · hostPath</li><li>systemd · preStop</li>
+    </ul>
+    <p class="meta">25 Oct 2026 · The lab follows Oracle's <a href="https://docs.oracle.com/en/database/oracle/oracle-database/19/rackb/install-configure-rac-olcne.html">How to Install and Configure Oracle RAC on Oracle Cloud Native Environment</a>. This page explains guide step 10.4 in depth. <a class="pdf" href="rac-k8s-statefulset.pdf">PDF version</a></p>
+    <div class="legend" aria-label="Where commands run">
+      <span class="where win">PowerShell</span><span>on your PC</span>
+      <span class="where node">worker · controlplane</span><span>root shell on a VM</span>
+      <span class="where pod">racnode1-0</span><span>root shell in a RAC pod</span>
+          </div>
+  </div>
+</header>
+<div class="layout">
+  <nav class="toc" aria-label="Contents">
+    <details open><summary>Contents</summary><ol><li><a href="#at-a-glance"><span class="toc-num"></span>At a glance</a></li>
+<li><a href="#kubernetes-background-in-five-points"><span class="toc-num"></span>Kubernetes background in five points</a></li>
+<li><a href="#why-rac-needs-a-statefulset"><span class="toc-num"></span>Why RAC needs a StatefulSet</a></li>
+<li><a href="#the-manifest-field-by-field"><span class="toc-num"></span>The manifest, field by field</a></li>
+<li><a href="#what-happens-when-you-apply-it"><span class="toc-num"></span>What happens when you apply it</a></li>
+<li><a href="#lifecycle-what-survives-what"><span class="toc-num"></span>Lifecycle: what survives what</a></li>
+<li><a href="#try-it-yourself"><span class="toc-num"></span>Try it yourself</a></li>
+<li><a href="#what-breaks-without-each-field-and-production"><span class="toc-num"></span>What breaks without each field, and production</a></li></ol></details>
+  </nav>
+  <main class="content"><section class="sec"><h2 id="at-a-glance">At a glance</h2>
+<p>Guide step 10.4 runs one loop that creates <strong>two StatefulSets</strong>, <code>racnode1</code> and <code>racnode2</code>. Each StatefulSet creates and looks after exactly <strong>one pod</strong>: <code>racnode1-0</code> on worker1 and <code>racnode2-0</code> on worker2. Those two pods are the two RAC "servers". Everything Grid Infrastructure would normally get from a physical server (a fixed host name, its own disks, the shared ASM disks, two private network cards, kernel settings, a full init system) is written into the StatefulSet's <strong>pod template</strong>.</p>
+<figure class="diagram"><svg viewBox="0 0 760 500" role="img" aria-label="One StatefulSet, one pod, and everything the pod is wired to">
+<defs><marker id="anat-arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path class="d-arrowhead" d="M0 0L10 5L0 10z"/></marker></defs>
+<text class="d-title" x="24" y="34">One StatefulSet, one pod, and everything the pod is wired to</text>
+<g class="d-line"><path d="M214 120H238" fill="none" marker-end="url(#anat-arrow)"/><path d="M470 86H504" fill="none" marker-end="url(#anat-arrow)"/><path d="M470 150H504" fill="none" marker-end="url(#anat-arrow)"/><path d="M470 214H504" fill="none" marker-end="url(#anat-arrow)"/><path d="M470 278H504" fill="none" marker-end="url(#anat-arrow)"/><path d="M470 342H504" fill="none" marker-end="url(#anat-arrow)"/><path d="M470 406H504" fill="none" marker-end="url(#anat-arrow)"/></g>
+<rect class="d-box" x="24" y="60" width="190" height="150" rx="8"/>
+<text class="d-name" x="40" y="82">StatefulSet racnode1</text>
+<text class="d-text" x="40" y="100">replicas: 1 (default)</text>
+<text class="d-text" x="40" y="116">selector: cluster +</text>
+<text class="d-text" x="40" y="132">  hostname=racnode1-0</text>
+<text class="d-text" x="40" y="148">serviceName: racnode</text>
+<text class="d-text" x="40" y="164">template → the pod</text>
+<rect class="d-band" x="24" y="236" width="190" height="118" rx="8"/>
+<text class="d-name" x="40" y="258">StatefulSet racnode2</text>
+<text class="d-text" x="40" y="276">same manifest, n=2:</text>
+<text class="d-text" x="40" y="292">pod racnode2-0</text>
+<text class="d-text" x="40" y="308">on worker2, IPs .142,</text>
+<text class="d-text" x="40" y="324">/u01 from node2</text>
+<rect class="d-pod" x="240" y="60" width="230" height="372" rx="8"/>
+<text class="d-name" x="256" y="82">Pod racnode1-0</text>
+<text class="d-text" x="256" y="100">on worker1 (nodeAffinity)</text>
+<text class="d-text" x="256" y="116"></text>
+<text class="d-text" x="256" y="132">container racnode1-0</text>
+<text class="d-text" x="256" y="148">image database-rac:19-ol9-slim</text>
+<text class="d-text" x="256" y="164">PID 1: /usr/sbin/init</text>
+<text class="d-text" x="256" y="180"></text>
+<text class="d-text" x="256" y="196">12Gi RAM · 3 CPU</text>
+<text class="d-text" x="256" y="212">4Gi hugepages-2Mi</text>
+<text class="d-text" x="256" y="228"></text>
+<text class="d-text" x="256" y="244">capabilities: NET_ADMIN,</text>
+<text class="d-text" x="256" y="260">  NET_RAW, SYS_NICE, ...</text>
+<text class="d-text" x="256" y="276">sysctls: kernel.shm*, sem,</text>
+<text class="d-text" x="256" y="292">  rp_filter</text>
+<text class="d-text" x="256" y="308"></text>
+<text class="d-text" x="256" y="324">readinessProbe: TCP 1521</text>
+<text class="d-text" x="256" y="340">preStop: SIGRTMIN+3 → systemd</text>
+<text class="d-text" x="256" y="356">eth0: flannel pod IP</text>
+<rect class="d-box" x="506" y="60" width="230" height="52" rx="8"/>
+<text class="d-name" x="522" y="82">Multus eth1 · eth2</text>
+<text class="d-text" x="522" y="100">10.0.11.141 · 10.0.12.141</text>
+<rect class="d-box" x="506" y="124" width="230" height="52" rx="8"/>
+<text class="d-name" x="522" y="146">PVC block-asm-pvc-vol1, vol2</text>
+<text class="d-text" x="522" y="164">→ /dev/asm-disk1, asm-disk2</text>
+<rect class="d-box" x="506" y="188" width="230" height="52" rx="8"/>
+<text class="d-name" x="522" y="210">hostPath …/cluster01/node1</text>
+<text class="d-text" x="522" y="228">→ /u01 (Grid + DB homes)</text>
+<rect class="d-box" x="506" y="252" width="230" height="52" rx="8"/>
+<text class="d-name" x="522" y="274">Secret ssh-key-secret</text>
+<text class="d-text" x="522" y="292">→ /mnt/.ssh (read-only)</text>
+<rect class="d-box" x="506" y="316" width="230" height="52" rx="8"/>
+<text class="d-name" x="522" y="338">emptyDir medium: Memory</text>
+<text class="d-text" x="522" y="356">→ /dev/shm</text>
+<rect class="d-box" x="506" y="380" width="230" height="52" rx="8"/>
+<text class="d-name" x="522" y="402">hostPath …/software/stage</text>
+<text class="d-text" x="522" y="420">→ /stage (node 1 only)</text>
+<text class="d-quiet" x="24" y="462" text-anchor="start">The ASM PVCs are the same two claims in both StatefulSets: that is how both pods see the same disks.</text>
+<text class="d-quiet" x="24" y="480" text-anchor="start">The hostPath volumes are per worker: /u01 on worker1 is node1, on worker2 node2.</text>
+</svg><figcaption>racnode1 shown; racnode2 is the same with worker2, .142 and node2. Each box on the right is one entry in volumes or the Multus annotation.</figcaption></figure>
+<p>The manifest has four layers. This guide goes through them in the same order:</p>
+<div class="table-wrap"><table>
+<thead>
+<tr>
+<th>Layer</th>
+<th>Fields</th>
+<th>What it decides</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>The StatefulSet itself</td>
+<td><code>metadata</code>, <code>selector</code>, <code>serviceName</code>, <code>replicas</code> (left at 1)</td>
+<td>the object's name, which pods it owns, the pod's name and host name</td>
+</tr>
+<tr>
+<td>The pod</td>
+<td><code>labels</code>, the Multus annotation, <code>securityContext.sysctls</code>, <code>affinity</code>, <code>volumes</code></td>
+<td>where the pod runs, its networks, kernel settings, and what storage it can use</td>
+</tr>
+<tr>
+<td>The container</td>
+<td><code>image</code>, <code>command</code>, <code>resources</code>, <code>securityContext.capabilities</code>, <code>lifecycle</code></td>
+<td>what runs, how much CPU, memory and hugepages it gets, which privileges, how it shuts down</td>
+</tr>
+<tr>
+<td>The container's use of the volumes</td>
+<td><code>volumeDevices</code>, <code>volumeMounts</code>, <code>readinessProbe</code></td>
+<td>where each disk and directory appears inside the pod, and when the pod counts as Ready</td>
+</tr>
+</tbody>
+</table></div>
+<p><strong>Two StatefulSets, not one with two replicas.</strong> A single StatefulSet with <code>replicas: 2</code> would also give the names <code>racnode-0</code> and <code>racnode-1</code>. But every pod of one StatefulSet gets the same template, and the RAC pods must differ: each needs its own worker, its own <code>/u01</code> directory, its own private IPs (.141 and .142), and only node 1 mounts the installation zips. One StatefulSet per node keeps each pod's settings explicit. The Oracle doc does the same.</p>
+<p><strong>Where you meet these objects later:</strong></p>
+<ul>
+<li>Phase 11 installs Grid <strong>inside</strong> these pods (<code>kubectl -n rac exec -it racnode1-0 -- bash</code>).</li>
+<li>Phase 13's NodePort Services and Phase 10.3's headless Services find the pods through the labels set here.</li>
+<li>Phase 14 deletes a pod on purpose; the StatefulSet recreates it with the same name, on the same worker, with the same disks.</li>
+</ul>
+</section>
+<section class="sec"><h2 id="kubernetes-background-in-five-points">Kubernetes background in five points</h2>
+<p><strong>1. A pod is the unit Kubernetes runs.</strong> A pod is one or more containers that share a network address, a host name and a set of volumes. Our RAC pods have one container each. Kubernetes never "repairs" a pod: if it dies, a <strong>new</strong> pod is made from a template. Anything written only inside the container's own filesystem is lost then; only volumes survive (guide Phase 14 deals with that).</p>
+<p><strong>2. You rarely create pods directly; a controller does.</strong> A controller is a loop in the control plane that compares what you asked for (the spec) with what exists, and fixes the difference. You write "I want this pod to exist"; the controller creates it, and recreates it whenever it disappears.</p>
+<p><strong>3. Deployment versus StatefulSet.</strong> Both are controllers that make pods from a template. They differ in what they promise about each pod:</p>
+<div class="table-wrap"><table>
+<thead>
+<tr>
+<th></th>
+<th>Deployment</th>
+<th><strong>StatefulSet</strong></th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Pod name</td>
+<td>random suffix: <code>web-7d9f8c6b5-x2kqp</code></td>
+<td>fixed ordinal: <code>racnode1-0</code>, every time</td>
+</tr>
+<tr>
+<td>Host name inside the pod</td>
+<td>the random name</td>
+<td>the fixed name</td>
+</tr>
+<tr>
+<td>After a pod is deleted</td>
+<td>a new pod with a <strong>new</strong> name</td>
+<td>a new pod with the <strong>same</strong> name</td>
+</tr>
+<tr>
+<td>Two copies at once?</td>
+<td>allowed during updates</td>
+<td>never: the old pod must be gone before the new one starts</td>
+</tr>
+<tr>
+<td>Per-pod storage</td>
+<td>all replicas share one template</td>
+<td>can give each ordinal its own claim (<code>volumeClaimTemplates</code>)</td>
+</tr>
+<tr>
+<td>Typical use</td>
+<td>stateless web servers</td>
+<td>databases, queues, anything with an identity</td>
+</tr>
+</tbody>
+</table></div>
+<p><strong>4. A PersistentVolumeClaim (PVC) is a pod's request for storage.</strong> A PersistentVolume (PV) is the actual storage, here one shared VirtualBox disk on both workers (guide Phase 7). A PVC is a claim on a PV. The pod only names the PVC; Kubernetes finds the PV behind it. That indirection is why the StatefulSet doesn't contain any disk ID.</p>
+<p><strong>5. Labels connect everything.</strong> A StatefulSet finds "its" pods by a label <code>selector</code>. Services find pods the same way. Labels are free-form <code>key: value</code> pairs; the RAC pods carry <code>cluster: racnode</code> and <code>hostname: racnode1-0</code> (or <code>racnode2-0</code>), and Kubernetes adds <code>statefulset.kubernetes.io/pod-name: racnode1-0</code> by itself.</p>
+</section>
+<section class="sec"><h2 id="why-rac-needs-a-statefulset">Why RAC needs a StatefulSet</h2>
+<p>Grid Infrastructure was written for physical servers. It assumes four things about each node, and a StatefulSet is the Kubernetes object that provides all four.</p>
+<div class="table-wrap"><table>
+<thead>
+<tr>
+<th>Grid assumes</th>
+<th>Why it matters to Grid</th>
+<th>What provides it</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>The host name never changes</strong></td>
+<td>The installer records <code>racnode1-0</code> and <code>racnode2-0</code> as the cluster's node names in the OCR (the cluster registry on ASM) and the OLR (each node's local registry under <code>/u01</code>). A node that boots with another name is a stranger to the cluster.</td>
+<td>StatefulSet pod name = host name, always <code>&lt;statefulset name&gt;-0</code></td>
+</tr>
+<tr>
+<td><strong>The node's own disk comes back</strong></td>
+<td><code>/u01</code> holds the Grid home, the database home, the inventory and the OLR.</td>
+<td><code>hostPath</code> volume plus <code>nodeAffinity</code>: the pod always lands on the worker that has its directory</td>
+</tr>
+<tr>
+<td><strong>The shared disks are the same on both nodes</strong></td>
+<td>ASM's disk group <code>DATA</code> holds the OCR, the voting files and the database.</td>
+<td>the same two PVCs named in both StatefulSets</td>
+</tr>
+<tr>
+<td><strong>There is never a second copy of a node</strong></td>
+<td>Two processes both acting as racnode1-0 against the same voting files and data files would corrupt the cluster.</td>
+<td>the StatefulSet guarantee: at most one pod per name at any time</td>
+</tr>
+</tbody>
+</table></div>
+<p><strong>Why not just a bare Pod?</strong> A pod created on its own (<code>kind: Pod</code>) is not recreated when it is deleted or its worker reboots. The StatefulSet controller does that, and Phase 14 relies on it.</p>
+<p><strong>Why not a Deployment?</strong> Each restart would give a new random name such as <code>racnode-5c8f7d9b4-q7tzl</code>; Grid would see a new, unknown node. A Deployment may also run the old and the new pod side by side for a moment during an update, which RAC must never do.</p>
+<p><strong>Why no <code>volumeClaimTemplates</code>?</strong> That's the usual StatefulSet way to give each pod its <strong>own</strong> disk: Kubernetes creates a claim per pod, such as <code>data-racnode1-0</code>. ASM disks are the opposite: <strong>one</strong> disk used by <strong>both</strong> pods. So the claims are created once by hand in guide Phase 7 (<code>block-asm-pvc-vol1</code>, <code>block-asm-pvc-vol2</code>) and both StatefulSets name the same two claims. Each node's private disk (<code>/u01</code>) is a <code>hostPath</code> directory rather than a claim, because it is plain local storage that only one worker ever uses.</p>
+<p><strong>Why one StatefulSet per node, with <code>replicas: 1</code>?</strong> Covered in "At a glance": the two pods differ in their worker, <code>/u01</code> directory, private IPs and the <code>/stage</code> mount, and one template can't express that. A side benefit: you can stop, restart or change one RAC node without touching the other's object.</p>
+</section>
+<section class="sec"><h2 id="the-manifest-field-by-field">The manifest, field by field</h2>
+<p>Each part below quotes a piece of the 10.4 manifest for <code>n=1</code>, then says why it is there, where it is used, and what happens without it.</p>
+<h3 id="the-shell-loop-around-the-yaml">The shell loop around the YAML</h3>
+<div class="cmd"><div class="cmd-head"><span class="where file">shell</span><span class="where-note"></span></div><button class="copy" type="button" aria-label="Copy commands">Copy</button><pre><code><span class="k">for</span><span class="w"> </span>n<span class="w"> </span><span class="k">in</span><span class="w"> </span><span class="m">1</span><span class="w"> </span><span class="m">2</span><span class="p">;</span><span class="w"> </span><span class="k">do</span>
+<span class="w">  </span><span class="nv">stagevol</span><span class="o">=</span><span class="s2">""</span><span class="p">;</span><span class="w"> </span><span class="nv">stagemnt</span><span class="o">=</span><span class="s2">""</span>
+<span class="w">  </span><span class="k">if</span><span class="w"> </span><span class="o">[</span><span class="w"> </span><span class="nv">$n</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="m">1</span><span class="w"> </span><span class="o">]</span><span class="p">;</span><span class="w"> </span><span class="k">then</span>
+<span class="w">    </span><span class="nv">stagevol</span><span class="o">=</span><span class="s1">$'       - name: stagevol\n         hostPath: { path: /scratch/software/stage }'</span>
+<span class="w">    </span><span class="nv">stagemnt</span><span class="o">=</span><span class="s1">$'         - { mountPath: /stage, name: stagevol }'</span>
+<span class="w">  </span><span class="k">fi</span>
+<span class="w">  </span>cat<span class="w"> </span><span class="s">&lt;&lt;EOF | kubectl apply -f -</span>
+<span class="s">  ...</span>
+<span class="s">EOF</span>
+<span class="k">done</span>
+</code></pre></div>
+<ul>
+<li><strong><code>for n in 1 2</code>:</strong> the same text is applied twice. Every <code>$n</code> inside becomes <code>1</code>, then <code>2</code>: <code>racnode$n</code> → <code>racnode1</code>, <code>worker$n</code> → <code>worker1</code>, <code>10.0.11.14$n</code> → <code>10.0.11.141</code>.</li>
+<li><strong><code>&lt;&lt;EOF</code> without quotes:</strong> the shell expands <code>$n</code>, <code>$stagevol</code> and <code>$stagemnt</code> before <code>kubectl</code> sees the text. (Phase 10.3's SCAN block uses <code>&lt;&lt;'EOF'</code> with quotes because it has nothing to fill in.)</li>
+<li><strong><code>$'...\n...'</code>:</strong> a bash string in which <code>\n</code> is a real line break. <code>$stagevol</code> is two YAML lines with the exact indentation of the <code>volumes:</code> list, so on node 1 it becomes one more list entry; on node 2 it is empty and leaves a blank line, which YAML ignores.</li>
+<li><strong><code>kubectl apply -f -</code>:</strong> read the manifest from standard input and create the object, or update it if it already exists. Running the unchanged loop again is harmless. Running it <strong>with a change</strong> restarts the pods; see "updateStrategy" below.</li>
+<li><strong>Indentation:</strong> under <code>template.spec</code> the manifest indents by 5 spaces, and some lists by 1 or 2. YAML only needs each level to be consistent, so this is valid, just unusual. Copy it exactly.</li>
+</ul>
+<h3 id="apiversion-kind-and-metadata">apiVersion, kind and metadata</h3>
+<div class="cmd"><div class="cmd-head"><span class="where file">yaml</span><span class="where-note"></span></div><button class="copy" type="button" aria-label="Copy commands">Copy</button><pre><code><span class="nt">apiVersion</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">apps/v1</span>
+<span class="nt">kind</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">StatefulSet</span>
+<span class="nt">metadata</span><span class="p">:</span>
+<span class="w">  </span><span class="nt">name</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">racnode1</span>
+<span class="w">  </span><span class="nt">namespace</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">rac</span>
+<span class="w">  </span><span class="nt">labels</span><span class="p">:</span><span class="w"> </span><span class="p p-Indicator">{</span><span class="nt"> cluster</span><span class="p">:</span><span class="w"> </span><span class="nv">racnode</span><span class="p p-Indicator">,</span><span class="nt"> hostname</span><span class="p">:</span><span class="w"> </span><span class="nv">racnode1-0</span><span class="w"> </span><span class="p p-Indicator">}</span>
+</code></pre></div>
+<ul>
+<li><strong><code>apps/v1</code> / <code>StatefulSet</code>:</strong> which API and object type. StatefulSets live in the <code>apps</code> group, like Deployments.</li>
+<li><strong><code>name: racnode1</code>:</strong> the StatefulSet's name. Its pods are named <code>&lt;name&gt;-&lt;ordinal&gt;</code>, so with one replica the only pod is <strong><code>racnode1-0</code></strong>. That is where the RAC host name comes from; the whole cluster depends on this one field.</li>
+<li><strong><code>namespace: rac</code>:</strong> the same namespace as the PVCs (Phase 7), the Secret (10.2) and the Services (10.3). A pod can only use claims and secrets in its own namespace.</li>
+<li><strong><code>labels</code></strong> on the StatefulSet object itself: only for finding it (<code>kubectl -n rac get sts -l cluster=racnode</code>). They don't select anything.</li>
+</ul>
+<h3 id="spec-selector-servicename-and-the-defaults-you-dont-see">spec: selector, serviceName and the defaults you don't see</h3>
+<div class="cmd"><div class="cmd-head"><span class="where file">yaml</span><span class="where-note"></span></div><button class="copy" type="button" aria-label="Copy commands">Copy</button><pre><code><span class="nt">spec</span><span class="p">:</span>
+<span class="w">  </span><span class="nt">selector</span><span class="p">:</span>
+<span class="w">    </span><span class="nt">matchLabels</span><span class="p">:</span><span class="w"> </span><span class="p p-Indicator">{</span><span class="nt"> cluster</span><span class="p">:</span><span class="w"> </span><span class="nv">racnode</span><span class="p p-Indicator">,</span><span class="nt"> hostname</span><span class="p">:</span><span class="w"> </span><span class="nv">racnode1-0</span><span class="w"> </span><span class="p p-Indicator">}</span>
+<span class="w">  </span><span class="nt">serviceName</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">racnode</span>
+<span class="w">  </span><span class="nt">template</span><span class="p">:</span>
+<span class="w">    </span><span class="l l-Scalar l-Scalar-Plain">...</span>
+</code></pre></div>
+<ul>
+<li><strong><code>selector.matchLabels</code>:</strong> tells the controller which pods belong to this StatefulSet. It must match the template's labels exactly or the API server rejects the manifest. It can't be changed after creation. The doc uses only <code>cluster: racnode</code> for <strong>both</strong> StatefulSets, so each would also "match" the other's pod; Kubernetes warns against overlapping selectors. Adding <code>hostname: racnode1-0</code> makes each selector match exactly one pod.</li>
+<li><strong><code>serviceName: racnode</code>:</strong> names the "governing" headless Service. The controller copies it into the pod as <code>subdomain</code>, and the kubelet then writes the full name <code>racnode1-0.racnode.rac.svc.cluster.local</code> into the pod's <code>/etc/hosts</code>. No Service called <code>racnode</code> exists in this lab, so that full name isn't in DNS; the names Grid uses come from the five Services of 10.3 instead (see the Services guide). The field is kept because the doc has it.</li>
+<li><strong><code>replicas</code></strong> is not set, so it is <strong>1</strong>: one pod per StatefulSet.</li>
+<li><strong><code>podManagementPolicy</code></strong> is not set: <code>OrderedReady</code>. It only matters with several replicas, so it has no effect here.</li>
+<li><strong><code>updateStrategy</code></strong> is not set: <code>RollingUpdate</code>. <strong>Any change to the template</strong> (an image tag, a memory size, a new mount) makes the controller <strong>delete <code>racnode1-0</code> and create it again</strong>. That's a RAC node restart. Re-running 10.4 with a change restarts both StatefulSets' pods almost at the same time: a full cluster outage. Change one StatefulSet at a time, and only when you mean to restart that node.</li>
+</ul>
+<h3 id="the-pods-labels-and-the-multus-annotation">The pod's labels and the Multus annotation</h3>
+<div class="cmd"><div class="cmd-head"><span class="where file">yaml</span><span class="where-note"></span></div><button class="copy" type="button" aria-label="Copy commands">Copy</button><pre><code><span class="w">  </span><span class="nt">template</span><span class="p">:</span>
+<span class="w">    </span><span class="nt">metadata</span><span class="p">:</span>
+<span class="w">      </span><span class="nt">labels</span><span class="p">:</span><span class="w"> </span><span class="p p-Indicator">{</span><span class="nt"> cluster</span><span class="p">:</span><span class="w"> </span><span class="nv">racnode</span><span class="p p-Indicator">,</span><span class="nt"> hostname</span><span class="p">:</span><span class="w"> </span><span class="nv">racnode1-0</span><span class="w"> </span><span class="p p-Indicator">}</span>
+<span class="w">      </span><span class="nt">annotations</span><span class="p">:</span>
+<span class="w">        </span><span class="nt">k8s.v1.cni.cncf.io/networks</span><span class="p">:</span><span class="w"> </span><span class="s">'[</span>
+<span class="w">          </span><span class="s">{"name":"macvlan-conf1","namespace":"multus-rac","interface":"eth1","ips":["10.0.11.141/24"]},</span>
+<span class="w">          </span><span class="s">{"name":"macvlan-conf2","namespace":"multus-rac","interface":"eth2","ips":["10.0.12.141/24"]}</span><span class="nv"> </span><span class="s">]'</span>
+</code></pre></div>
+<ul>
+<li><strong><code>labels</code>:</strong> copied onto the pod. They are how everything else finds it:</li>
+</ul>
+<div class="table-wrap"><table>
+<thead>
+<tr>
+<th>Label</th>
+<th>Used by</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>cluster: racnode</code></td>
+<td>the StatefulSet selector; Service <code>racnode-scan</code> (both pods, 10.3); NodePort <code>racnode-scan-lsnr</code> (13.3)</td>
+</tr>
+<tr>
+<td><code>hostname: racnode1-0</code></td>
+<td>the StatefulSet selector; NodePort <code>racnode1-np</code> (13.3)</td>
+</tr>
+<tr>
+<td><code>statefulset.kubernetes.io/pod-name: racnode1-0</code> (added by Kubernetes)</td>
+<td>the node and VIP Services <code>racnode1-0</code>, <code>racnode1-0-vip</code> (10.3)</td>
+</tr>
+</tbody>
+</table></div>
+<ul>
+<li><strong>The Multus annotation:</strong> by default a pod gets one network card, <code>eth0</code>, from flannel. RAC needs a private interconnect, ideally two. Multus reads this annotation when the pod is created and adds <code>eth1</code> and <code>eth2</code> using the NetworkAttachmentDefinitions <code>macvlan-conf1</code> and <code>macvlan-conf2</code> from Phase 6. Each is a macvlan sub-interface of a worker NIC on one private network.</li>
+<li><strong><code>"ips"</code>:</strong> fixed addresses, <code>.141</code> for node 1 and <code>.142</code> for node 2. Grid records the interconnect <strong>subnets</strong> at install time and the nodes must reach each other there; fixed IPs keep that predictable across pod restarts. Without the annotation the pod would have no <code>eth1</code>/<code>eth2</code> and the Grid installer would find no private network.</li>
+</ul>
+<h3 id="pod-securitycontext-the-kernel-settings">Pod securityContext: the kernel settings</h3>
+<div class="cmd"><div class="cmd-head"><span class="where file">yaml</span><span class="where-note"></span></div><button class="copy" type="button" aria-label="Copy commands">Copy</button><pre><code><span class="w">    </span><span class="nt">spec</span><span class="p">:</span>
+<span class="w">     </span><span class="nt">securityContext</span><span class="p">:</span>
+<span class="w">       </span><span class="nt">sysctls</span><span class="p">:</span>
+<span class="w">        </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="p p-Indicator">{</span><span class="nt"> name</span><span class="p">:</span><span class="w"> </span><span class="nv">kernel.shmall</span><span class="p p-Indicator">,</span><span class="nt"> value</span><span class="p">:</span><span class="w"> </span><span class="s">"2097152"</span><span class="w"> </span><span class="p p-Indicator">}</span>
+<span class="w">        </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="p p-Indicator">{</span><span class="nt"> name</span><span class="p">:</span><span class="w"> </span><span class="nv">kernel.sem</span><span class="p p-Indicator">,</span><span class="nt"> value</span><span class="p">:</span><span class="w"> </span><span class="s">"250</span><span class="nv"> </span><span class="s">32000</span><span class="nv"> </span><span class="s">100</span><span class="nv"> </span><span class="s">128"</span><span class="w"> </span><span class="p p-Indicator">}</span>
+<span class="w">        </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="p p-Indicator">{</span><span class="nt"> name</span><span class="p">:</span><span class="w"> </span><span class="nv">kernel.shmmax</span><span class="p p-Indicator">,</span><span class="nt"> value</span><span class="p">:</span><span class="w"> </span><span class="s">"8589934592"</span><span class="w"> </span><span class="p p-Indicator">}</span>
+<span class="w">        </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="p p-Indicator">{</span><span class="nt"> name</span><span class="p">:</span><span class="w"> </span><span class="nv">kernel.shmmni</span><span class="p p-Indicator">,</span><span class="nt"> value</span><span class="p">:</span><span class="w"> </span><span class="s">"4096"</span><span class="w"> </span><span class="p p-Indicator">}</span>
+<span class="w">        </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="p p-Indicator">{</span><span class="nt"> name</span><span class="p">:</span><span class="w"> </span><span class="nv">net.ipv4.conf.all.rp_filter</span><span class="p p-Indicator">,</span><span class="nt"> value</span><span class="p">:</span><span class="w"> </span><span class="s">"2"</span><span class="w"> </span><span class="p p-Indicator">}</span>
+</code></pre></div>
+<p>On a normal server these lines would sit in <code>/etc/sysctl.d/</code>, put there by <code>oracle-database-preinstall-19c</code>. In a container that file doesn't help: <code>kernel.shm*</code>, <code>kernel.sem</code> and the <code>net.*</code> settings belong to the pod's own IPC and network <strong>namespaces</strong>, which Kubernetes creates fresh for every pod. So they are set per pod, here.</p>
+<div class="table-wrap"><table>
+<thead>
+<tr>
+<th>Setting</th>
+<th>Value</th>
+<th>Meaning</th>
+<th>Used by</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>kernel.shmmax</code></td>
+<td>8589934592</td>
+<td>largest single shared-memory segment: 8 GiB</td>
+<td>the SGA, which is one or more System V segments</td>
+</tr>
+<tr>
+<td><code>kernel.shmall</code></td>
+<td>2097152</td>
+<td>total shared memory in 4 KiB pages: 8 GiB</td>
+<td>all SGAs in the pod together (ASM and the database)</td>
+</tr>
+<tr>
+<td><code>kernel.shmmni</code></td>
+<td>4096</td>
+<td>maximum number of segments</td>
+<td>many instances and processes</td>
+</tr>
+<tr>
+<td><code>kernel.sem</code></td>
+<td>250 32000 100 128</td>
+<td>per set, total, per call, number of sets</td>
+<td>Oracle processes coordinate through semaphores</td>
+</tr>
+<tr>
+<td><code>net.ipv4.conf.all.rp_filter</code></td>
+<td>2</td>
+<td>"loose" reverse-path filter</td>
+<td>Oracle requires 0 or 2 with several private interfaces; with "strict" (1) the kernel may drop interconnect packets that arrive on a different card than the return route</td>
+</tr>
+</tbody>
+</table></div>
+<p>These sysctls are on Kubernetes' "unsafe" list, so the kubelet refuses the pod (<code>SysctlForbidden</code>) unless they are allowed in its configuration. That's <code>allowedUnsafeSysctls</code> in guide 5.1. They affect only this pod, not the worker.</p>
+<h3 id="affinity-always-the-same-worker">affinity: always the same worker</h3>
+<div class="cmd"><div class="cmd-head"><span class="where file">yaml</span><span class="where-note"></span></div><button class="copy" type="button" aria-label="Copy commands">Copy</button><pre><code><span class="w">     </span><span class="nt">affinity</span><span class="p">:</span>
+<span class="w">       </span><span class="nt">nodeAffinity</span><span class="p">:</span>
+<span class="w">         </span><span class="nt">requiredDuringSchedulingIgnoredDuringExecution</span><span class="p">:</span>
+<span class="w">           </span><span class="nt">nodeSelectorTerms</span><span class="p">:</span>
+<span class="w">           </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="nt">matchExpressions</span><span class="p">:</span>
+<span class="w">             </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="p p-Indicator">{</span><span class="nt"> key</span><span class="p">:</span><span class="w"> </span><span class="nv">kubernetes.io/hostname</span><span class="p p-Indicator">,</span><span class="nt"> operator</span><span class="p">:</span><span class="w"> </span><span class="nv">In</span><span class="p p-Indicator">,</span><span class="nt"> values</span><span class="p">:</span><span class="w"> </span><span class="p p-Indicator">[</span><span class="nv">worker1</span><span class="p p-Indicator">]</span><span class="w"> </span><span class="p p-Indicator">}</span>
+</code></pre></div>
+<ul>
+<li><strong>What:</strong> the scheduler may place this pod <strong>only</strong> on the node whose <code>kubernetes.io/hostname</code> label is <code>worker1</code>. Every node has that label automatically.</li>
+<li><strong>Why:</strong> <code>/u01</code> is a directory on worker1's disk (next section), and the macvlan interfaces sit on worker1's NICs. On another worker the pod would start with an <strong>empty</strong> <code>/u01</code>: no Grid home, no OLR. It also keeps the two RAC nodes on different workers.</li>
+<li><strong>"required...":</strong> a hard rule. If worker1 is down, the pod stays <code>Pending</code> rather than starting elsewhere. That's intended: the surviving node carries the database.</li>
+<li><strong>"...IgnoredDuringExecution":</strong> if the label changed later, a running pod would not be evicted.</li>
+</ul>
+<h3 id="volumes-what-storage-the-pod-may-use">volumes: what storage the pod may use</h3>
+<div class="cmd"><div class="cmd-head"><span class="where file">yaml</span><span class="where-note"></span></div><button class="copy" type="button" aria-label="Copy commands">Copy</button><pre><code><span class="w">     </span><span class="nt">volumes</span><span class="p">:</span>
+<span class="w">       </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="nt">name</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">myshm</span>
+<span class="w">         </span><span class="nt">emptyDir</span><span class="p">:</span><span class="w"> </span><span class="p p-Indicator">{</span><span class="nt"> medium</span><span class="p">:</span><span class="w"> </span><span class="nv">Memory</span><span class="w"> </span><span class="p p-Indicator">}</span>
+<span class="w">       </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="nt">name</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">swvol-racnode1</span>
+<span class="w">         </span><span class="nt">hostPath</span><span class="p">:</span><span class="w"> </span><span class="p p-Indicator">{</span><span class="nt"> path</span><span class="p">:</span><span class="w"> </span><span class="nv">/scratch/rac/cluster01/node1</span><span class="w"> </span><span class="p p-Indicator">}</span>
+<span class="w">       </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="nt">name</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">asmvol1</span>
+<span class="w">         </span><span class="nt">persistentVolumeClaim</span><span class="p">:</span><span class="w"> </span><span class="p p-Indicator">{</span><span class="nt"> claimName</span><span class="p">:</span><span class="w"> </span><span class="nv">block-asm-pvc-vol1</span><span class="w"> </span><span class="p p-Indicator">}</span>
+<span class="w">       </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="nt">name</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">asmvol2</span>
+<span class="w">         </span><span class="nt">persistentVolumeClaim</span><span class="p">:</span><span class="w"> </span><span class="p p-Indicator">{</span><span class="nt"> claimName</span><span class="p">:</span><span class="w"> </span><span class="nv">block-asm-pvc-vol2</span><span class="w"> </span><span class="p p-Indicator">}</span>
+<span class="w">       </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="nt">name</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">sshkeys</span>
+<span class="w">         </span><span class="nt">secret</span><span class="p">:</span><span class="w"> </span><span class="p p-Indicator">{</span><span class="nt"> secretName</span><span class="p">:</span><span class="w"> </span><span class="nv">ssh-key-secret</span><span class="w"> </span><span class="p p-Indicator">}</span>
+<span class="w">       </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="nt">name</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">stagevol</span><span class="w">                                  </span><span class="c1"># node 1 only</span>
+<span class="w">         </span><span class="nt">hostPath</span><span class="p">:</span><span class="w"> </span><span class="p p-Indicator">{</span><span class="nt"> path</span><span class="p">:</span><span class="w"> </span><span class="nv">/scratch/software/stage</span><span class="w"> </span><span class="p p-Indicator">}</span>
+</code></pre></div>
+<p><code>volumes</code> only <strong>declares</strong> storage and gives each a name. Where it appears inside the container is decided later by <code>volumeMounts</code> and <code>volumeDevices</code>.</p>
+<div class="table-wrap"><table>
+<thead>
+<tr>
+<th>Volume</th>
+<th>Type</th>
+<th>Becomes</th>
+<th>Why</th>
+<th>Survives a pod restart?</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>myshm</code></td>
+<td><code>emptyDir</code>, <code>medium: Memory</code> (a RAM disk)</td>
+<td><code>/dev/shm</code></td>
+<td>a container's <code>/dev/shm</code> is only 64 MB. ASM uses Automatic Memory Management by default, which keeps its memory in <code>/dev/shm</code> files, and Grid's checks want it larger. Its contents count against the pod's 12 GiB memory limit.</td>
+<td>no, and it doesn't need to</td>
+</tr>
+<tr>
+<td><code>swvol-racnode1</code></td>
+<td><code>hostPath</code></td>
+<td><code>/u01</code></td>
+<td>the Grid and database homes, the inventory, the OLR, and the lab's restart state (Phase 14). A plain directory on worker1's <code>/scratch</code> disk, created in guide Phase 4.</td>
+<td><strong>yes</strong>: it's on the worker</td>
+</tr>
+<tr>
+<td><code>asmvol1</code>, <code>asmvol2</code></td>
+<td>PVC (<code>persistentVolumeClaim</code>)</td>
+<td><code>/dev/asm-disk1</code>, <code>/dev/asm-disk2</code></td>
+<td>the shared ASM disks; claims from Phase 7, Block mode. The same two claims are in both StatefulSets.</td>
+<td><strong>yes</strong></td>
+</tr>
+<tr>
+<td><code>sshkeys</code></td>
+<td><code>secret</code></td>
+<td><code>/mnt/.ssh</code></td>
+<td>the key pair from 10.2. Guide 11.1 copies it into the grid and oracle users' <code>~/.ssh</code>.</td>
+<td>yes (it's in the API server)</td>
+</tr>
+<tr>
+<td><code>stagevol</code></td>
+<td><code>hostPath</code></td>
+<td><code>/stage</code></td>
+<td>the Grid and database zip files. Only node 1 runs the installers, so only node 1 mounts it.</td>
+<td>yes</td>
+</tr>
+</tbody>
+</table></div>
+<h3 id="the-container-name-image-pull-policy-and-command">The container: name, image, pull policy and command</h3>
+<div class="cmd"><div class="cmd-head"><span class="where file">yaml</span><span class="where-note"></span></div><button class="copy" type="button" aria-label="Copy commands">Copy</button><pre><code><span class="w">     </span><span class="nt">containers</span><span class="p">:</span>
+<span class="w">       </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="nt">name</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">racnode1-0</span>
+<span class="w">         </span><span class="nt">image</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">localhost/oracle/database-rac:19-ol9-slim</span>
+<span class="w">         </span><span class="nt">imagePullPolicy</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">IfNotPresent</span>
+<span class="w">         </span><span class="nt">command</span><span class="p">:</span><span class="w"> </span><span class="p p-Indicator">[</span><span class="nv">/usr/sbin/init</span><span class="p p-Indicator">]</span>
+</code></pre></div>
+<ul>
+<li><strong><code>name</code>:</strong> the container's name inside the pod. <code>kubectl exec</code> picks it automatically because there's only one.</li>
+<li><strong><code>image</code>:</strong> built on each worker in guide Phase 8 and stored in that worker's CRI-O storage. <code>localhost/</code> means it came from no registry.</li>
+<li><strong><code>imagePullPolicy: IfNotPresent</code>:</strong> use the local image if the worker has it. The doc's <code>Always</code> would try to download <code>localhost/oracle/...</code> from a registry, fail, and leave the pod in <code>ErrImagePull</code>.</li>
+<li><strong><code>command: [/usr/sbin/init]</code>:</strong> run <strong>systemd</strong> as process 1, as on a real server. Grid installs a systemd service (<code>oracle-ohasd</code>) that starts the cluster stack at boot, and expects <code>sshd</code>, <code>rc.local</code> and other services. A normal container runs one program; this one runs a whole init system. On each start systemd runs <code>rc.local</code>, which runs the image's <code>setupContainerEnv.sh</code> (Phase 8): it gives <code>/dev/asm-disk*</code> to <code>grid:asmadmin</code>, mode 660, and calls the restart hook from Phase 14.</li>
+</ul>
+<h3 id="resources-cpu-memory-and-hugepages">resources: CPU, memory and hugepages</h3>
+<div class="cmd"><div class="cmd-head"><span class="where file">yaml</span><span class="where-note"></span></div><button class="copy" type="button" aria-label="Copy commands">Copy</button><pre><code><span class="w">         </span><span class="nt">resources</span><span class="p">:</span>
+<span class="w">           </span><span class="nt">requests</span><span class="p">:</span><span class="w"> </span><span class="p p-Indicator">{</span><span class="nt"> memory</span><span class="p">:</span><span class="w"> </span><span class="s">"12Gi"</span><span class="p p-Indicator">,</span><span class="nt"> cpu</span><span class="p">:</span><span class="w"> </span><span class="s">"3"</span><span class="w"> </span><span class="p p-Indicator">}</span>
+<span class="w">           </span><span class="nt">limits</span><span class="p">:</span><span class="w"> </span><span class="p p-Indicator">{</span><span class="nt"> hugepages-2Mi</span><span class="p">:</span><span class="w"> </span><span class="s">"4Gi"</span><span class="p p-Indicator">,</span><span class="nt"> memory</span><span class="p">:</span><span class="w"> </span><span class="s">"12Gi"</span><span class="p p-Indicator">,</span><span class="nt"> cpu</span><span class="p">:</span><span class="w"> </span><span class="s">"3"</span><span class="w"> </span><span class="p p-Indicator">}</span>
+</code></pre></div>
+<ul>
+<li><strong><code>requests</code>:</strong> what the scheduler reserves. Worker1 must have 3 CPUs and 12 GiB not already promised to other pods, or the pod stays <code>Pending</code> with <code>Insufficient cpu</code> or <code>Insufficient memory</code>.</li>
+<li><strong><code>limits</code>:</strong> the ceiling, enforced by the kernel's cgroups. <strong>CPU 3:</strong> the pod's processes get at most 3 CPUs' worth of time; busier than that, they are slowed down (throttled), not killed. <strong>Memory 12 GiB:</strong> above it, the kernel's out-of-memory killer ends a process inside the pod. For RAC that means an instance or Grid process dies, so the size must cover the PGA, the processes, the ASM instance and <code>/dev/shm</code>.</li>
+<li><strong>requests = limits for both CPU and memory</strong> puts the pod in the <strong>Guaranteed</strong> QoS class. If worker1 runs short of memory, Guaranteed pods are the last the kubelet evicts and the last the kernel picks to kill.</li>
+<li><strong><code>hugepages-2Mi: 4Gi</code>:</strong> 2048 pages of 2 MiB, which worker1 reserved at boot in guide Phase 4. Hugepages are counted separately from <code>memory</code>, and the request is taken to equal the limit. The database SGA goes into them: they're locked in RAM, never swapped, and cheaper for the CPU to map. If the worker hasn't reserved them, the pod stays <code>Pending</code> with <code>Insufficient hugepages-2Mi</code>.</li>
+<li><strong>Sizing:</strong> the doc uses 16 GiB, 4 CPUs and 8 GiB of hugepages. The lab workers have 22 GB and 4 vCPUs; 12 + 4 GiB leaves room for the worker's own system, the kubelet and CRI-O, and 3 CPUs leave one for them.</li>
+</ul>
+<h3 id="securitycontext-capabilities-instead-of-privileged">securityContext: capabilities instead of privileged</h3>
+<div class="cmd"><div class="cmd-head"><span class="where file">yaml</span><span class="where-note"></span></div><button class="copy" type="button" aria-label="Copy commands">Copy</button><pre><code><span class="w">         </span><span class="nt">securityContext</span><span class="p">:</span>
+<span class="w">           </span><span class="nt">privileged</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">false</span>
+<span class="w">           </span><span class="nt">capabilities</span><span class="p">:</span>
+<span class="w">             </span><span class="nt">add</span><span class="p">:</span><span class="w"> </span><span class="p p-Indicator">[</span><span class="s">"NET_ADMIN"</span><span class="p p-Indicator">,</span><span class="w"> </span><span class="s">"NET_RAW"</span><span class="p p-Indicator">,</span><span class="w"> </span><span class="s">"SYS_CHROOT"</span><span class="p p-Indicator">,</span><span class="w"> </span><span class="s">"SYS_NICE"</span><span class="p p-Indicator">,</span><span class="w"> </span><span class="s">"SYS_RESOURCE"</span><span class="p p-Indicator">,</span><span class="w"> </span><span class="s">"AUDIT_WRITE"</span><span class="p p-Indicator">,</span><span class="w"> </span><span class="s">"AUDIT_CONTROL"</span><span class="p p-Indicator">]</span>
+</code></pre></div>
+<p>Linux splits root's power into <strong>capabilities</strong>. A <code>privileged: true</code> container gets all of them, plus every device on the host and no SELinux or seccomp confinement. That would work, but it hands the pod the whole worker. Instead the pod stays unprivileged and gets only what Grid needs, on top of CRI-O's small default set (<code>CHOWN</code>, <code>DAC_OVERRIDE</code>, <code>FOWNER</code>, <code>FSETID</code>, <code>KILL</code>, <code>NET_BIND_SERVICE</code>, <code>SETGID</code>, <code>SETPCAP</code>, <code>SETUID</code>).</p>
+<div class="table-wrap"><table>
+<thead>
+<tr>
+<th>Capability</th>
+<th>Lets the pod</th>
+<th>Used by</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>NET_ADMIN</code></td>
+<td>change interfaces, addresses and routes</td>
+<td>Grid's HAIP puts <code>169.254.x.x</code> addresses on <code>eth1</code>/<code>eth2</code>; Grid's network checks; the image's <code>ping</code> carries this file capability</td>
+</tr>
+<tr>
+<td><code>NET_RAW</code></td>
+<td>open raw sockets (ICMP, ARP)</td>
+<td><code>ping</code>, used by the installer's checks and Grid's network monitoring</td>
+</tr>
+<tr>
+<td><code>SYS_CHROOT</code></td>
+<td>call <code>chroot</code></td>
+<td><code>sshd</code>'s privilege separation; without it SSH logins fail, and the installers copy everything to node 2 over SSH</td>
+</tr>
+<tr>
+<td><code>SYS_NICE</code></td>
+<td>raise priorities and use real-time scheduling</td>
+<td>Grid's <code>ocssd</code> and agents, and the database's LMS and VKTM processes, run at real-time priority so heartbeats are never late; a late heartbeat can mean an eviction</td>
+</tr>
+<tr>
+<td><code>SYS_RESOURCE</code></td>
+<td>go above resource limits</td>
+<td>the high <code>nofile</code>, <code>nproc</code> and <code>memlock</code> limits the preinstall package sets for grid and oracle</td>
+</tr>
+<tr>
+<td><code>AUDIT_WRITE</code></td>
+<td>write to the kernel audit log</td>
+<td>PAM during <code>ssh</code> and <code>su</code> logins</td>
+</tr>
+<tr>
+<td><code>AUDIT_CONTROL</code></td>
+<td>set audit state, including a process's login ID</td>
+<td><code>pam_loginuid</code> during <code>ssh</code> logins; without it <code>sshd</code> can refuse the login</td>
+</tr>
+</tbody>
+</table></div>
+<h3 id="lifecycleprestop-an-orderly-shutdown">lifecycle.preStop: an orderly shutdown</h3>
+<div class="cmd"><div class="cmd-head"><span class="where file">yaml</span><span class="where-note"></span></div><button class="copy" type="button" aria-label="Copy commands">Copy</button><pre><code><span class="w">         </span><span class="nt">lifecycle</span><span class="p">:</span>
+<span class="w">           </span><span class="nt">preStop</span><span class="p">:</span><span class="w"> </span><span class="p p-Indicator">{</span><span class="nt"> exec</span><span class="p">:</span><span class="w"> </span><span class="p p-Indicator">{</span><span class="nt"> command</span><span class="p">:</span><span class="w"> </span><span class="p p-Indicator">[</span><span class="s">"/bin/bash"</span><span class="p p-Indicator">,</span><span class="s">"-c"</span><span class="p p-Indicator">,</span><span class="s">"kill</span><span class="nv"> </span><span class="s">-SIGRTMIN+3</span><span class="nv"> </span><span class="s">1"</span><span class="p p-Indicator">]</span><span class="w"> </span><span class="p p-Indicator">}</span><span class="w"> </span><span class="p p-Indicator">}</span>
+</code></pre></div>
+<ul>
+<li><strong>When:</strong> the kubelet runs this inside the container when the pod is being deleted: <code>kubectl delete pod</code>, a template change, scaling to 0, or a node drain.</li>
+<li><strong>What:</strong> sends signal <code>SIGRTMIN+3</code> to process 1, systemd. For systemd that means "halt": stop all services in order (Grid's <code>oracle-ohasd</code> among them, then <code>sshd</code> and the rest), then exit.</li>
+<li><strong>Why not the normal way:</strong> after <code>preStop</code>, Kubernetes sends <code>SIGTERM</code> to process 1. A normal program exits on <code>SIGTERM</code>, but systemd as process 1 treats it as "re-execute yourself" and doesn't shut down. Without <code>preStop</code>, nothing stops cleanly until the grace period runs out and everything is killed with <code>SIGKILL</code>.</li>
+<li><strong>The grace period</strong> isn't set, so it's Kubernetes' default <strong>30 seconds</strong>, including the <code>preStop</code> time. A full Grid and database shutdown can take longer. Then the rest is killed, much like a power cut: the other node recovers the instance, as Phase 14 shows. For planned work, stop Grid in the pod first (<code>crsctl stop crs</code> as root), then delete the pod.</li>
+</ul>
+<h3 id="volumedevices-raw-asm-disks">volumeDevices: raw ASM disks</h3>
+<div class="cmd"><div class="cmd-head"><span class="where file">yaml</span><span class="where-note"></span></div><button class="copy" type="button" aria-label="Copy commands">Copy</button><pre><code><span class="w">         </span><span class="nt">volumeDevices</span><span class="p">:</span>
+<span class="w">         </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="p p-Indicator">{</span><span class="nt"> name</span><span class="p">:</span><span class="w"> </span><span class="nv">asmvol1</span><span class="p p-Indicator">,</span><span class="nt"> devicePath</span><span class="p">:</span><span class="w"> </span><span class="nv">/dev/asm-disk1</span><span class="w"> </span><span class="p p-Indicator">}</span>
+<span class="w">         </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="p p-Indicator">{</span><span class="nt"> name</span><span class="p">:</span><span class="w"> </span><span class="nv">asmvol2</span><span class="p p-Indicator">,</span><span class="nt"> devicePath</span><span class="p">:</span><span class="w"> </span><span class="nv">/dev/asm-disk2</span><span class="w"> </span><span class="p p-Indicator">}</span>
+</code></pre></div>
+<ul>
+<li><strong>What:</strong> for a claim in <code>Block</code> mode, CRI-O creates a <strong>device node</strong> at <code>devicePath</code> inside the container and allows the container's cgroup to use that device. Nothing is mounted; ASM reads and writes the raw disk.</li>
+<li><strong>Why <code>volumeDevices</code> and not <code>volumeMounts</code>:</strong> a Block claim can only be used this way. Under <code>volumeMounts</code>, the pod fails to start.</li>
+<li><strong>Why fixed names:</strong> Grid's install response file sets the disk discovery string <code>/dev/asm-disk*</code> (Phase 11). Both pods see the same disks under the same names, whatever <code>sdX</code> letters the workers gave them. The whole chain is in the device-chain guide.</li>
+<li><strong>Owner:</strong> the node is created as <code>root:root</code>. <code>setupContainerEnv.sh</code> changes it to <code>grid:asmadmin</code> 660 at every start.</li>
+</ul>
+<h3 id="readinessprobe-when-the-pod-counts-as-ready">readinessProbe: when the pod counts as Ready</h3>
+<div class="cmd"><div class="cmd-head"><span class="where file">yaml</span><span class="where-note"></span></div><button class="copy" type="button" aria-label="Copy commands">Copy</button><pre><code><span class="w">         </span><span class="nt">readinessProbe</span><span class="p">:</span>
+<span class="w">           </span><span class="nt">tcpSocket</span><span class="p">:</span><span class="w"> </span><span class="p p-Indicator">{</span><span class="nt"> port</span><span class="p">:</span><span class="w"> </span><span class="nv">1521</span><span class="w"> </span><span class="p p-Indicator">}</span>
+<span class="w">           </span><span class="nt">initialDelaySeconds</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">10</span>
+<span class="w">           </span><span class="nt">periodSeconds</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">30</span>
+<span class="w">           </span><span class="nt">failureThreshold</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">1</span>
+</code></pre></div>
+<ul>
+<li><strong>What:</strong> every 30 seconds, starting 10 seconds after the container starts, the kubelet tries a TCP connection to port 1521 on the pod's IP. If it connects, the pod is Ready (<code>1/1</code>); one failure (<code>failureThreshold: 1</code>) makes it not Ready (<code>0/1</code>).</li>
+<li><strong>Who listens on 1521:</strong> the SCAN listeners, after Grid is installed (Phase 11). Until then the pod is <code>Running</code> but <code>0/1</code>, which is normal.</li>
+<li><strong>Where it's used:</strong></li>
+<li><code>kubectl get pods</code>, in the READY column.</li>
+<li>Services <strong>without</strong> <code>publishNotReadyAddresses</code>, which only send traffic to Ready pods. That's the three NodePort Services of 13.3, so Windows clients aren't sent to a pod whose listeners are down.</li>
+<li>The five headless Services of 10.3 <strong>ignore</strong> readiness, so the names resolve during the install.</li>
+<li><strong>No <code>livenessProbe</code>, on purpose:</strong> a failed liveness probe makes the kubelet <strong>restart</strong> the container. During the install, patching, or a Grid restart, port 1521 is closed for minutes; a liveness probe would keep restarting the RAC node at exactly the wrong time. The readiness probe only reports; it never restarts anything.</li>
+</ul>
+<h3 id="volumemounts-where-the-directories-appear">volumeMounts: where the directories appear</h3>
+<div class="cmd"><div class="cmd-head"><span class="where file">yaml</span><span class="where-note"></span></div><button class="copy" type="button" aria-label="Copy commands">Copy</button><pre><code><span class="w">         </span><span class="nt">volumeMounts</span><span class="p">:</span>
+<span class="w">         </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="p p-Indicator">{</span><span class="nt"> mountPath</span><span class="p">:</span><span class="w"> </span><span class="nv">/dev/shm</span><span class="p p-Indicator">,</span><span class="nt"> name</span><span class="p">:</span><span class="w"> </span><span class="nv">myshm</span><span class="w"> </span><span class="p p-Indicator">}</span>
+<span class="w">         </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="p p-Indicator">{</span><span class="nt"> mountPath</span><span class="p">:</span><span class="w"> </span><span class="nv">/u01</span><span class="p p-Indicator">,</span><span class="nt"> name</span><span class="p">:</span><span class="w"> </span><span class="nv">swvol-racnode1</span><span class="w"> </span><span class="p p-Indicator">}</span>
+<span class="w">         </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="p p-Indicator">{</span><span class="nt"> mountPath</span><span class="p">:</span><span class="w"> </span><span class="nv">/mnt/.ssh</span><span class="p p-Indicator">,</span><span class="nt"> name</span><span class="p">:</span><span class="w"> </span><span class="nv">sshkeys</span><span class="p p-Indicator">,</span><span class="nt"> readOnly</span><span class="p">:</span><span class="w"> </span><span class="nv">true</span><span class="w"> </span><span class="p p-Indicator">}</span>
+<span class="w">         </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="p p-Indicator">{</span><span class="nt"> mountPath</span><span class="p">:</span><span class="w"> </span><span class="nv">/stage</span><span class="p p-Indicator">,</span><span class="nt"> name</span><span class="p">:</span><span class="w"> </span><span class="nv">stagevol</span><span class="w"> </span><span class="p p-Indicator">}</span><span class="w">          </span><span class="c1"># node 1 only</span>
+</code></pre></div>
+<p>Each line connects a volume declared above (by <code>name</code>) to a path inside the container.</p>
+<ul>
+<li><strong><code>/u01</code>:</strong> the Oracle base. Everything the installers write under it lands on worker1's disk.</li>
+<li><strong><code>/mnt/.ssh</code>, <code>readOnly: true</code>:</strong> the Secret's two files. Read-only because nothing in the pod should change the shared key. The doc's text asks for this, but its YAML doesn't set it.</li>
+<li><strong><code>/dev/shm</code></strong> replaces the 64 MB default with the RAM-backed volume.</li>
+<li><strong><code>/stage</code></strong> exists only in racnode1-0, from the <code>$stagemnt</code> line of the shell loop.</li>
+</ul>
+</section>
+<section class="sec"><h2 id="what-happens-when-you-apply-it">What happens when you apply it</h2>
+<p><code>kubectl apply</code> returns in a second, but the pod is built by several components, one after the other. Knowing the order tells you where to look when a pod doesn't come up.</p>
+<figure class="diagram"><svg viewBox="0 0 760 560" role="img" aria-label="What happens between kubectl apply and a Running 0/1 pod">
+<defs><marker id="apply-arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path class="d-arrowhead" d="M0 0L10 5L0 10z"/></marker></defs>
+<text class="d-title" x="24" y="34">What happens between kubectl apply and a Running 0/1 pod</text>
+<g class="d-line"><path d="M380 104V116" fill="none" marker-end="url(#apply-arrow)"/><path d="M380 166V178" fill="none" marker-end="url(#apply-arrow)"/><path d="M380 228V240" fill="none" marker-end="url(#apply-arrow)"/><path d="M380 290V302" fill="none" marker-end="url(#apply-arrow)"/><path d="M380 352V364" fill="none" marker-end="url(#apply-arrow)"/><path d="M380 414V426" fill="none" marker-end="url(#apply-arrow)"/><path d="M380 476V488" fill="none" marker-end="url(#apply-arrow)"/></g>
+<rect class="d-box" x="24" y="56" width="712" height="48" rx="8"/>
+<text class="d-name" x="40" y="78">1 · kubectl apply (controlplane)</text>
+<text class="d-text" x="40" y="96">the API server checks the manifest and stores StatefulSet racnode1 in etcd</text>
+<rect class="d-box" x="24" y="118" width="712" height="48" rx="8"/>
+<text class="d-name" x="40" y="140">2 · StatefulSet controller</text>
+<text class="d-text" x="40" y="158">creates Pod racnode1-0: name, hostname, subdomain and labels from the template</text>
+<rect class="d-box" x="24" y="180" width="712" height="48" rx="8"/>
+<text class="d-name" x="40" y="202">3 · Scheduler</text>
+<text class="d-text" x="40" y="220">nodeAffinity allows worker1 only; 3 CPU, 12Gi and 4Gi hugepages must be free; PVCs Bound</text>
+<rect class="d-box" x="24" y="242" width="712" height="48" rx="8"/>
+<text class="d-name" x="40" y="264">4 · kubelet on worker1: admit, then volumes</text>
+<text class="d-text" x="40" y="282">sysctls on the allowed list?  Then block devices, hostPath, Secret, emptyDir</text>
+<rect class="d-box" x="24" y="304" width="712" height="48" rx="8"/>
+<text class="d-name" x="40" y="326">5 · Pod sandbox and networks</text>
+<text class="d-text" x="40" y="344">namespaces + sysctls; flannel gives eth0, Multus adds eth1 .141 and eth2 .141</text>
+<rect class="d-box" x="24" y="366" width="712" height="48" rx="8"/>
+<text class="d-name" x="40" y="388">6 · CRI-O creates the container</text>
+<text class="d-text" x="40" y="406">device nodes /dev/asm-disk*, mounts, capabilities, cgroup limits for CPU and RAM</text>
+<rect class="d-box" x="24" y="428" width="712" height="48" rx="8"/>
+<text class="d-name" x="40" y="450">7 · /usr/sbin/init (systemd) boots</text>
+<text class="d-text" x="40" y="468">rc.local → setupContainerEnv.sh: asm-disk* to grid:asmadmin 660; sshd starts</text>
+<rect class="d-pod" x="24" y="490" width="712" height="48" rx="8"/>
+<text class="d-name" x="40" y="512">8 · readinessProbe, every 30 s</text>
+<text class="d-text" x="40" y="530">TCP 1521 is closed until Grid runs, so the pod shows Running, 0/1 READY</text>
+</svg><figcaption>About a minute for each pod in the lab. Steps 4 to 6 are where most first-build failures show up: kubectl -n rac describe pod says which.</figcaption></figure>
+<div class="table-wrap"><table>
+<thead>
+<tr>
+<th>Step</th>
+<th>Who</th>
+<th>Uses these fields</th>
+<th>If it fails, you see</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>1</td>
+<td>API server on controlplane</td>
+<td>the whole manifest (schema, selector = labels)</td>
+<td>an error straight from <code>kubectl apply</code></td>
+</tr>
+<tr>
+<td>2</td>
+<td>StatefulSet controller</td>
+<td><code>name</code>, <code>serviceName</code>, <code>selector</code>, <code>template</code></td>
+<td><code>kubectl -n rac get sts</code> shows <code>0/1</code> and no pod; <code>describe sts</code> has the reason</td>
+</tr>
+<tr>
+<td>3</td>
+<td>Scheduler</td>
+<td><code>affinity</code>, <code>resources.requests</code>, hugepages, the PVCs</td>
+<td><code>Pending</code>; <code>describe pod</code> says <code>didn't match Pod's node affinity</code>, <code>Insufficient hugepages-2Mi</code>, or <code>unbound PersistentVolumeClaims</code></td>
+</tr>
+<tr>
+<td>4</td>
+<td>kubelet on worker1</td>
+<td><code>sysctls</code> (against <code>allowedUnsafeSysctls</code>), <code>volumes</code></td>
+<td><code>SysctlForbidden</code>; <code>ContainerCreating</code> with <code>FailedMount</code> or <code>FailedMapVolume</code> events</td>
+</tr>
+<tr>
+<td>5</td>
+<td>CRI-O sandbox, flannel and Multus</td>
+<td>the Multus annotation, <code>sysctls</code></td>
+<td><code>ContainerCreating</code> with <code>FailedCreatePodSandBox</code> (for example a wrong NetworkAttachmentDefinition name)</td>
+</tr>
+<tr>
+<td>6</td>
+<td>CRI-O container</td>
+<td><code>image</code>, <code>imagePullPolicy</code>, <code>volumeDevices</code>, <code>volumeMounts</code>, <code>capabilities</code>, <code>limits</code></td>
+<td><code>ErrImagePull</code> or <code>CreateContainerError</code></td>
+</tr>
+<tr>
+<td>7</td>
+<td>systemd in the container</td>
+<td><code>command</code>, then the image's <code>rc.local</code></td>
+<td><code>CrashLoopBackOff</code> with no log output: SELinux <code>container_manage_cgroup</code> is off on that worker (guide 10.4's note)</td>
+</tr>
+<tr>
+<td>8</td>
+<td>kubelet, every 30 s</td>
+<td><code>readinessProbe</code></td>
+<td><code>Running 0/1</code>: expected until Grid is installed</td>
+</tr>
+</tbody>
+</table></div>
+<p>The events behind every row are in one place:</p>
+<div class="cmd"><div class="cmd-head"><span class="where node">controlplane</span><span class="where-note"></span></div><div class="connect"><span class="connect-lbl">Connect first</span><span class="conn-cmd"><code>ssh -p 2210 root@127.0.0.1</code><button class="copy-mini" type="button" data-copy="ssh -p 2210 root@127.0.0.1" aria-label="Copy ssh -p 2210 root@127.0.0.1">Copy</button></span></div><button class="copy" type="button" aria-label="Copy commands">Copy</button><pre><code>kubectl<span class="w"> </span>-n<span class="w"> </span>rac<span class="w"> </span>describe<span class="w"> </span>pod<span class="w"> </span>racnode1-0<span class="w"> </span><span class="p">|</span><span class="w"> </span>sed<span class="w"> </span>-n<span class="w"> </span><span class="s1">'/^Events:/,$p'</span>
+kubectl<span class="w"> </span>-n<span class="w"> </span>rac<span class="w"> </span>get<span class="w"> </span>events<span class="w"> </span>--sort-by<span class="o">=</span>.lastTimestamp<span class="w"> </span><span class="p">|</span><span class="w"> </span>tail<span class="w"> </span>-20
+</code></pre></div>
+</section>
+<section class="sec"><h2 id="lifecycle-what-survives-what">Lifecycle: what survives what</h2>
+<p>The StatefulSet keeps working long after 10.4: every restart, reboot and change goes through it. This table is the quickest way to predict what a given action does to a RAC node.</p>
+<div class="table-wrap"><table>
+<thead>
+<tr>
+<th>Event</th>
+<th>What Kubernetes does</th>
+<th>Same name and worker?</th>
+<th>Pod IP (<code>eth0</code>)</th>
+<th><code>eth1</code>/<code>eth2</code></th>
+<th><code>/u01</code> and ASM disks</th>
+<th>Container's own files</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>systemd (process 1) exits or crashes</td>
+<td>the kubelet starts a <strong>new container</strong> in the same pod (<code>RESTARTS</code> goes up)</td>
+<td>yes</td>
+<td>same</td>
+<td>same</td>
+<td>kept</td>
+<td><strong>lost</strong></td>
+</tr>
+<tr>
+<td><code>kubectl delete pod racnode1-0</code></td>
+<td><code>preStop</code>, up to 30 s, then the controller creates a new pod with the same name</td>
+<td>yes</td>
+<td>usually <strong>new</strong></td>
+<td>same (fixed IPs)</td>
+<td>kept</td>
+<td><strong>lost</strong></td>
+</tr>
+<tr>
+<td>worker1 reboots</td>
+<td>when the kubelet is back, it starts the pod's containers again</td>
+<td>yes</td>
+<td>usually <strong>new</strong></td>
+<td>same</td>
+<td>kept</td>
+<td><strong>lost</strong></td>
+</tr>
+<tr>
+<td>worker1 stays down</td>
+<td>after about 5 minutes the pod is marked for eviction but can't be confirmed gone, so <strong>no</strong> replacement starts anywhere</td>
+<td>(stays on worker1)</td>
+<td>-</td>
+<td>-</td>
+<td>kept</td>
+<td>-</td>
+</tr>
+<tr>
+<td><code>kubectl -n rac scale sts racnode1 --replicas=0</code></td>
+<td>deletes the pod and doesn't recreate it; <code>--replicas=1</code> brings it back</td>
+<td>yes, when scaled up</td>
+<td>new</td>
+<td>same</td>
+<td>kept</td>
+<td><strong>lost</strong></td>
+</tr>
+<tr>
+<td>template change (<code>kubectl apply</code> with an edit)</td>
+<td>rolling update: deletes the pod, creates it from the new template</td>
+<td>yes</td>
+<td>new</td>
+<td>as in the new template</td>
+<td>kept</td>
+<td><strong>lost</strong></td>
+</tr>
+<tr>
+<td><code>kubectl -n rac delete sts racnode1</code></td>
+<td>deletes the StatefulSet <strong>and</strong> its pod; re-running 10.4 for node 1 recreates both</td>
+<td>yes, after re-apply</td>
+<td>new</td>
+<td>same</td>
+<td>kept</td>
+<td><strong>lost</strong></td>
+</tr>
+<tr>
+<td><code>kubectl -n rac delete pvc block-asm-pvc-vol1</code></td>
+<td>the claim waits in <code>Terminating</code> while a pod uses it; afterwards the PV is <code>Released</code> and, with <code>Retain</code>, the disk's data stays</td>
+<td>-</td>
+<td>-</td>
+<td>-</td>
+<td>data on the disk stays; the claim must be recreated by hand</td>
+<td>-</td>
+</tr>
+</tbody>
+</table></div>
+<p><strong>What "lost" means for RAC:</strong> the files Grid's root scripts wrote outside <code>/u01</code> (<code>/etc/oracle</code>, the <code>oracle-ohasd</code> service, <code>/etc/oratab</code> and others). Without them Grid doesn't start in the new container. Guide Phase 14 snapshots those files to <code>/u01</code> and restores them automatically at every start, so the node rejoins on its own.</p>
+<p><strong>Why a new pod IP doesn't matter:</strong> Grid stores the node and VIP <strong>names</strong>, and the headless Services of 10.3 point those names at whatever IP the pod has now. The private IPs, which Grid's interconnect depends on, are fixed by the Multus annotation.</p>
+<p><strong>Why "worker1 stays down" leaves node 1 down:</strong> a StatefulSet never runs two pods with the same name, and it can't know that the unreachable pod has really stopped. That's the protection RAC needs: the surviving node carries the database, and a second racnode1-0 can't appear on the same disks. The <code>nodeAffinity</code> would keep it off worker2 anyway. Don't use <code>kubectl delete pod --force</code> while worker1 might still be running.</p>
+</section>
+<section class="sec"><h2 id="try-it-yourself">Try it yourself</h2>
+<p>These commands only read, except the last block. Run them after guide 10.4, when both pods are <code>Running</code>.</p>
+<p><strong>The objects, and the defaults Kubernetes filled in:</strong></p>
+<div class="cmd"><div class="cmd-head"><span class="where node">controlplane</span><span class="where-note"></span></div><div class="connect"><span class="connect-lbl">Connect first</span><span class="conn-cmd"><code>ssh -p 2210 root@127.0.0.1</code><button class="copy-mini" type="button" data-copy="ssh -p 2210 root@127.0.0.1" aria-label="Copy ssh -p 2210 root@127.0.0.1">Copy</button></span></div><button class="copy" type="button" aria-label="Copy commands">Copy</button><pre><code>kubectl<span class="w"> </span>-n<span class="w"> </span>rac<span class="w"> </span>get<span class="w"> </span>sts<span class="w"> </span>-o<span class="w"> </span>wide
+kubectl<span class="w"> </span>-n<span class="w"> </span>rac<span class="w"> </span>get<span class="w"> </span>pods<span class="w"> </span>-o<span class="w"> </span>wide<span class="w"> </span>--show-labels
+<span class="k">for</span><span class="w"> </span>s<span class="w"> </span><span class="k">in</span><span class="w"> </span>racnode1<span class="w"> </span>racnode2<span class="p">;</span><span class="w"> </span><span class="k">do</span><span class="w"> </span>kubectl<span class="w"> </span>-n<span class="w"> </span>rac<span class="w"> </span>get<span class="w"> </span>sts<span class="w"> </span><span class="nv">$s</span><span class="w"> </span>-o<span class="w"> </span><span class="nv">jsonpath</span><span class="o">=</span><span class="s1">'{.metadata.name}: replicas={.spec.replicas} policy={.spec.podManagementPolicy} update={.spec.updateStrategy.type} grace={.spec.template.spec.terminationGracePeriodSeconds}s{"\n"}'</span><span class="p">;</span><span class="w"> </span><span class="k">done</span>
+<span class="k">for</span><span class="w"> </span>p<span class="w"> </span><span class="k">in</span><span class="w"> </span>racnode1-0<span class="w"> </span>racnode2-0<span class="p">;</span><span class="w"> </span><span class="k">do</span><span class="w"> </span>kubectl<span class="w"> </span>-n<span class="w"> </span>rac<span class="w"> </span>get<span class="w"> </span>pod<span class="w"> </span><span class="nv">$p</span><span class="w"> </span>-o<span class="w"> </span><span class="nv">jsonpath</span><span class="o">=</span><span class="s1">'{.metadata.name}: owner={.metadata.ownerReferences[0].kind}/{.metadata.ownerReferences[0].name} node={.spec.nodeName} hostname={.spec.hostname} subdomain={.spec.subdomain} qos={.status.qosClass} ip={.status.podIP}{"\n"}'</span><span class="p">;</span><span class="w"> </span><span class="k">done</span>
+</code></pre></div>
+<p><strong>Expect:</strong> <code>replicas=1 policy=OrderedReady update=RollingUpdate grace=30s</code>; each pod owned by its StatefulSet, on its own worker, <code>subdomain=racnode</code>, <code>qos=Guaranteed</code>.</p>
+<p><strong>What Multus attached</strong> (Multus writes the result back as an annotation):</p>
+<div class="cmd"><div class="cmd-head"><span class="where node">controlplane</span><span class="where-note"></span></div><div class="connect"><span class="connect-lbl">Connect first</span><span class="conn-cmd"><code>ssh -p 2210 root@127.0.0.1</code><button class="copy-mini" type="button" data-copy="ssh -p 2210 root@127.0.0.1" aria-label="Copy ssh -p 2210 root@127.0.0.1">Copy</button></span></div><button class="copy" type="button" aria-label="Copy commands">Copy</button><pre><code>kubectl<span class="w"> </span>-n<span class="w"> </span>rac<span class="w"> </span>get<span class="w"> </span>pod<span class="w"> </span>racnode1-0<span class="w"> </span>-o<span class="w"> </span><span class="nv">jsonpath</span><span class="o">=</span><span class="s1">'{.metadata.annotations.k8s\.v1\.cni\.cncf\.io/network-status}'</span><span class="p">;</span><span class="w"> </span><span class="nb">echo</span>
+</code></pre></div>
+<p><strong>Expect:</strong> three entries: flannel's <code>eth0</code> with the pod IP, <code>eth1</code> with 10.0.11.141 and <code>eth2</code> with 10.0.12.141.</p>
+<p><strong>Each field as seen from inside the pod:</strong></p>
+<div class="cmd"><div class="cmd-head"><span class="where pod">racnode1-0</span><span class="where-note"></span></div><div class="connect"><span class="connect-lbl">Connect first</span><span class="conn-cmd"><code>ssh -p 2210 root@127.0.0.1</code><button class="copy-mini" type="button" data-copy="ssh -p 2210 root@127.0.0.1" aria-label="Copy ssh -p 2210 root@127.0.0.1">Copy</button></span>, then <span class="conn-cmd"><code>kubectl -n rac exec -it racnode1-0 -- bash</code><button class="copy-mini" type="button" data-copy="kubectl -n rac exec -it racnode1-0 -- bash" aria-label="Copy kubectl -n rac exec -it racnode1-0 -- bash">Copy</button></span></div><button class="copy" type="button" aria-label="Copy commands">Copy</button><pre><code><span class="nb">echo</span><span class="w"> </span><span class="s2">"--- name"</span><span class="p">;</span><span class="w">        </span>hostname<span class="p">;</span><span class="w"> </span>grep<span class="w"> </span>racnode<span class="w"> </span>/etc/hosts
+<span class="nb">echo</span><span class="w"> </span><span class="s2">"--- process 1"</span><span class="p">;</span><span class="w">   </span>ps<span class="w"> </span>-p<span class="w"> </span><span class="m">1</span><span class="w"> </span>-o<span class="w"> </span><span class="nv">comm</span><span class="o">=</span>
+<span class="nb">echo</span><span class="w"> </span><span class="s2">"--- sysctls"</span><span class="p">;</span><span class="w">     </span>sysctl<span class="w"> </span>kernel.shmmax<span class="w"> </span>kernel.shmall<span class="w"> </span>kernel.shmmni<span class="w"> </span>kernel.sem<span class="w"> </span>net.ipv4.conf.all.rp_filter
+<span class="nb">echo</span><span class="w"> </span><span class="s2">"--- limits"</span><span class="p">;</span><span class="w">      </span>cat<span class="w"> </span>/sys/fs/cgroup/memory.max<span class="w"> </span>/sys/fs/cgroup/cpu.max<span class="w"> </span>/sys/fs/cgroup/hugetlb.2MB.max
+<span class="nb">echo</span><span class="w"> </span><span class="s2">"--- caps"</span><span class="p">;</span><span class="w">        </span>capsh<span class="w"> </span>--decode<span class="o">=</span><span class="k">$(</span>awk<span class="w"> </span><span class="s1">'/CapBnd/{print $2}'</span><span class="w"> </span>/proc/1/status<span class="k">)</span><span class="w"> </span><span class="m">2</span>&gt;/dev/null<span class="w"> </span><span class="o">||</span><span class="w"> </span>grep<span class="w"> </span>CapBnd<span class="w"> </span>/proc/1/status
+<span class="nb">echo</span><span class="w"> </span><span class="s2">"--- storage"</span><span class="p">;</span><span class="w">     </span>ls<span class="w"> </span>-l<span class="w"> </span>/dev/asm-disk*<span class="p">;</span><span class="w"> </span>df<span class="w"> </span>-h<span class="w"> </span>/dev/shm<span class="w"> </span>/u01<span class="w"> </span>/mnt/.ssh<span class="p">;</span><span class="w"> </span>ls<span class="w"> </span>/stage<span class="w"> </span><span class="m">2</span>&gt;/dev/null
+<span class="nb">echo</span><span class="w"> </span><span class="s2">"--- networks"</span><span class="p">;</span><span class="w">    </span>ip<span class="w"> </span>-4<span class="w"> </span>-br<span class="w"> </span>addr
+</code></pre></div>
+<p><strong>Expect:</strong></p>
+<ul>
+<li>host name <code>racnode1-0</code>, and <code>/etc/hosts</code> with <code>racnode1-0.racnode.rac.svc.cluster.local racnode1-0</code>;</li>
+<li>process 1 is <code>systemd</code>;</li>
+<li>the five sysctl values from the manifest;</li>
+<li><code>12884901888</code> (12 GiB), <code>300000 100000</code> (3 CPUs: 300 ms in every 100 ms), <code>4294967296</code> (4 GiB of hugepages);</li>
+<li>the capabilities list includes <code>cap_net_admin</code>, <code>cap_net_raw</code>, <code>cap_sys_chroot</code>, <code>cap_sys_nice</code>, <code>cap_sys_resource</code>, <code>cap_audit_write</code> and <code>cap_audit_control</code>;</li>
+<li>the ASM devices as <code>grid asmadmin</code>, mode <code>brw-rw----</code>; <code>/dev/shm</code> as <code>tmpfs</code>; <code>/u01</code> on worker1's <code>/scratch</code> disk; <code>/stage</code> with the zips;</li>
+<li><code>eth0</code>, <code>eth1</code> and <code>eth2</code> with their addresses.</li>
+</ul>
+<p><strong>The worker's side: hugepages, the <code>/u01</code> directory and the container:</strong></p>
+<div class="cmd"><div class="cmd-head"><span class="where node">worker1</span><span class="where-note"></span></div><div class="connect"><span class="connect-lbl">Connect first</span><span class="conn-cmd"><code>ssh -p 2211 root@127.0.0.1</code><button class="copy-mini" type="button" data-copy="ssh -p 2211 root@127.0.0.1" aria-label="Copy ssh -p 2211 root@127.0.0.1">Copy</button></span></div><button class="copy" type="button" aria-label="Copy commands">Copy</button><pre><code>grep<span class="w"> </span>-E<span class="w"> </span><span class="s1">'HugePages_(Total|Free)'</span><span class="w"> </span>/proc/meminfo
+ls<span class="w"> </span>-la<span class="w"> </span>/scratch/rac/cluster01/node1
+crictl<span class="w"> </span>ps<span class="w"> </span>--name<span class="w"> </span>racnode1-0
+</code></pre></div>
+<p><strong>Expect:</strong> <code>HugePages_Total: 2048</code>; the directory that the pod sees as <code>/u01</code>; one running container. <code>HugePages_Free</code> only drops once the database's SGA uses them.</p>
+<p><strong>What the scheduler has reserved on each worker:</strong></p>
+<div class="cmd"><div class="cmd-head"><span class="where node">controlplane</span><span class="where-note"></span></div><div class="connect"><span class="connect-lbl">Connect first</span><span class="conn-cmd"><code>ssh -p 2210 root@127.0.0.1</code><button class="copy-mini" type="button" data-copy="ssh -p 2210 root@127.0.0.1" aria-label="Copy ssh -p 2210 root@127.0.0.1">Copy</button></span></div><button class="copy" type="button" aria-label="Copy commands">Copy</button><pre><code><span class="k">for</span><span class="w"> </span>w<span class="w"> </span><span class="k">in</span><span class="w"> </span>worker1<span class="w"> </span>worker2<span class="p">;</span><span class="w"> </span><span class="k">do</span><span class="w"> </span><span class="nb">echo</span><span class="w"> </span><span class="s2">"--- </span><span class="nv">$w</span><span class="s2">"</span><span class="p">;</span><span class="w"> </span>kubectl<span class="w"> </span>describe<span class="w"> </span>node<span class="w"> </span><span class="nv">$w</span><span class="w"> </span><span class="p">|</span><span class="w"> </span>sed<span class="w"> </span>-n<span class="w"> </span><span class="s1">'/Allocated resources/,/Events/p'</span><span class="w"> </span><span class="p">|</span><span class="w"> </span>grep<span class="w"> </span>-E<span class="w"> </span><span class="s1">'cpu|memory|hugepages'</span><span class="p">;</span><span class="w"> </span><span class="k">done</span>
+</code></pre></div>
+<p><strong>Expect:</strong> about 3 CPUs, 12 GiB of memory and 4 GiB of <code>hugepages-2Mi</code> requested on each worker, mostly by the RAC pod.</p>
+<p><strong>Watch the StatefulSet recreate a pod.</strong> Only do this <strong>before Grid is installed</strong> (between guide 10.5 and 11), or as part of Phase 14's test. After the install, a pod deletion is a RAC node crash.</p>
+<div class="cmd"><div class="cmd-head"><span class="where node">controlplane</span><span class="where-note"></span></div><div class="connect"><span class="connect-lbl">Connect first</span><span class="conn-cmd"><code>ssh -p 2210 root@127.0.0.1</code><button class="copy-mini" type="button" data-copy="ssh -p 2210 root@127.0.0.1" aria-label="Copy ssh -p 2210 root@127.0.0.1">Copy</button></span></div><button class="copy" type="button" aria-label="Copy commands">Copy</button><pre><code>kubectl<span class="w"> </span>-n<span class="w"> </span>rac<span class="w"> </span>get<span class="w"> </span>pod<span class="w"> </span>racnode2-0<span class="w"> </span>-o<span class="w"> </span>wide
+kubectl<span class="w"> </span>-n<span class="w"> </span>rac<span class="w"> </span>delete<span class="w"> </span>pod<span class="w"> </span>racnode2-0
+kubectl<span class="w"> </span>-n<span class="w"> </span>rac<span class="w"> </span>get<span class="w"> </span>pod<span class="w"> </span>racnode2-0<span class="w"> </span>-o<span class="w"> </span>wide<span class="w"> </span>-w
+</code></pre></div>
+<p><strong>Expect:</strong> the pod goes <code>Terminating</code>, then a new <code>racnode2-0</code> appears on <strong>worker2</strong> again, usually with a new pod IP, and reaches <code>Running 0/1</code>. Press Ctrl+C to stop watching. <code>/u01</code> on worker2 and the ASM disks are untouched.</p>
+</section>
+<section class="sec"><h2 id="what-breaks-without-each-field-and-production">What breaks without each field, and production</h2>
+<p><strong>Leave one field out and this is what you'd see:</strong></p>
+<div class="table-wrap"><table>
+<thead>
+<tr>
+<th>Without</th>
+<th>Symptom</th>
+<th>When you'd notice</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>a StatefulSet (a Deployment instead)</td>
+<td>a random pod name; Grid sees an unknown node after every restart</td>
+<td>the first pod restart after the install</td>
+</tr>
+<tr>
+<td><code>hostname</code> in the selector</td>
+<td>Kubernetes warns about overlapping selectors; the two StatefulSets each "see" both pods</td>
+<td>at once, as a warning</td>
+</tr>
+<tr>
+<td>the template labels</td>
+<td>the Services of 10.3 and 13.3 select no pod; names don't resolve</td>
+<td>Grid's prerequisite checks (Phase 11)</td>
+</tr>
+<tr>
+<td>the Multus annotation</td>
+<td>no <code>eth1</code>/<code>eth2</code>; no private interconnect</td>
+<td>the Grid installer's network step</td>
+</tr>
+<tr>
+<td><code>sysctls</code></td>
+<td>Oracle's defaults are too small: the ASM or database instance fails to allocate its SGA or semaphores</td>
+<td>instance start in Phase 11 or 12</td>
+</tr>
+<tr>
+<td><code>rp_filter: 2</code></td>
+<td>interconnect packets may be dropped by the kernel</td>
+<td>random node evictions, or the installer's interconnect checks</td>
+</tr>
+<tr>
+<td><code>nodeAffinity</code></td>
+<td>the pod may start on the other worker with an empty <code>/u01</code></td>
+<td>the first restart after the install</td>
+</tr>
+<tr>
+<td><code>/dev/shm</code> volume</td>
+<td>64 MB <code>/dev/shm</code>; ASM's memory target doesn't fit</td>
+<td>the Grid install, at ASM start</td>
+</tr>
+<tr>
+<td><code>/u01</code> hostPath</td>
+<td>Grid and database homes inside the container; all lost at the first restart</td>
+<td>the first restart</td>
+</tr>
+<tr>
+<td><code>volumeDevices</code></td>
+<td>no ASM disks in the pod</td>
+<td>the Grid install's disk discovery</td>
+</tr>
+<tr>
+<td><code>imagePullPolicy: IfNotPresent</code></td>
+<td><code>ErrImagePull</code></td>
+<td>at once</td>
+</tr>
+<tr>
+<td><code>/usr/sbin/init</code></td>
+<td>no systemd: no <code>sshd</code>, no <code>rc.local</code>, Grid can't register its service</td>
+<td>the pod's first start, then the install</td>
+</tr>
+<tr>
+<td>hugepages limit</td>
+<td>the pod can't use the worker's hugepages; the SGA uses normal memory and counts against the 12 GiB</td>
+<td>database start, or poorer performance</td>
+</tr>
+<tr>
+<td><code>capabilities</code></td>
+<td>SSH logins fail, <code>ping</code> fails, Grid can't set real-time priorities or HAIP addresses</td>
+<td>the SSH setup in 11.1, then the install</td>
+</tr>
+<tr>
+<td><code>preStop</code></td>
+<td>systemd ignores <code>SIGTERM</code>, so every deletion is a 30-second wait and a hard kill</td>
+<td>every pod deletion</td>
+</tr>
+<tr>
+<td><code>readinessProbe</code></td>
+<td>the pod always counts as Ready; the NodePorts send clients to a node whose listeners are down</td>
+<td>client errors during a node restart</td>
+</tr>
+</tbody>
+</table></div>
+<p><strong>In production you'd keep the design and change these:</strong></p>
+<ul>
+<li><strong>Shared storage from a CSI driver</strong>, not <code>local</code> PVs on VirtualBox disks: a SAN or NVMe-oF array whose driver offers shared Block volumes (<code>ReadWriteMany</code>, <code>volumeMode: Block</code>), with multipath on the hosts.</li>
+<li><strong>The Oracle homes on a PV</strong>, not a hostPath, or at least a hostPath with <code>type: Directory</code> so that a missing directory fails loudly instead of being silently created empty.</li>
+<li><strong>A longer <code>terminationGracePeriodSeconds</code></strong>, such as 600, so that a pod deletion gives Grid time to stop. And a <code>preStop</code> that first runs <code>crsctl stop crs</code> and then halts systemd.</li>
+<li><strong>Dedicated, tainted nodes</strong> for the RAC pods, with a matching toleration in the template, so nothing else is scheduled next to the database. Plus a namespace with explicit Pod Security exceptions for the capabilities and sysctls.</li>
+<li><strong>Images from a registry</strong>, with <code>imagePullPolicy: IfNotPresent</code> and a fixed tag or digest, instead of building the image on every worker.</li>
+<li><strong>CPU Manager <code>static</code> and Topology Manager</strong> on the workers, so the Guaranteed RAC pod gets whole, dedicated CPUs and memory on one NUMA node.</li>
+<li><strong>A PodDisruptionBudget</strong> with <code>maxUnavailable: 1</code> across both RAC pods, so a node drain during maintenance can't take both down at once.</li>
+<li><strong>Oracle's own operator.</strong> The Oracle Database Operator for Kubernetes (OraOperator) has a RAC controller (<code>RacDatabase</code>) that builds the pods, Services and storage from a smaller spec. The needs it has to meet are the ones in this guide, so this guide helps you read what it creates.</li>
+</ul></section>
+  <footer class="foot">Built from the lab's build log and scripts (rac-k8s-poc). Values are from the author's lab; change them to match yours.</footer>
+  </main>
+</div>
+</div>
+<script>(function () {
+  // Copy buttons: copy the commands without the "where" label
+  document.querySelectorAll('.cmd').forEach(function (box) {
+    var btn = box.querySelector('.copy'), code = box.querySelector('pre code');
+    if (!btn || !code) return;
+    btn.addEventListener('click', function () {
+      var text = code.innerText.replace(/\n$/, '');
+      var done = function () { btn.textContent = 'Copied'; btn.classList.add('done'); setTimeout(function () { btn.textContent = 'Copy'; btn.classList.remove('done'); }, 1600); };
+      var fallback = function () {
+        var r = document.createRange(); r.selectNodeContents(code);
+        var s = window.getSelection(); s.removeAllRanges(); s.addRange(r);
+        btn.textContent = 'Selected: press Ctrl+C';
+      };
+      try {
+        if (navigator.clipboard && navigator.clipboard.writeText) navigator.clipboard.writeText(text).then(done, fallback);
+        else fallback();
+      } catch (e) { fallback(); }
+    });
+  });
+  // Highlight the current section in the contents
+  var links = Array.prototype.slice.call(document.querySelectorAll('.toc a'));
+  var map = {};
+  links.forEach(function (a) { map[a.getAttribute('href').slice(1)] = a; });
+  if ('IntersectionObserver' in window) {
+    var obs = new IntersectionObserver(function (entries) {
+      entries.forEach(function (e) {
+        if (e.isIntersecting) {
+          links.forEach(function (a) { a.classList.remove('active'); });
+          var a = map[e.target.id]; if (a) a.classList.add('active');
+        }
+      });
+    }, { rootMargin: '0px 0px -75% 0px' });
+    document.querySelectorAll('.sec h2[id]').forEach(function (h) { obs.observe(h); });
+  }
+  // Collapse the contents by default on narrow screens
+  if (window.matchMedia && window.matchMedia('(max-width: 960px)').matches) {
+    var d = document.querySelector('.toc details'); if (d) d.removeAttribute('open');
+  }
+})();
+(function () {
+  document.querySelectorAll('.copy-mini').forEach(function (b) {
+    b.addEventListener('click', function () {
+      var t = b.getAttribute('data-copy');
+      var ok = function () { b.textContent = 'Copied'; b.classList.add('done'); setTimeout(function () { b.textContent = 'Copy'; b.classList.remove('done'); }, 1600); };
+      try { if (navigator.clipboard && navigator.clipboard.writeText) navigator.clipboard.writeText(t).then(ok, function () { b.textContent = 'Select and copy'; }); else b.textContent = 'Select and copy'; } catch (e) { b.textContent = 'Select and copy'; }
+    });
+  });
+})();
+</script>
+
+</body>
+</html>

@@ -1,0 +1,745 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>RAC Kubernetes Services</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wght@500;600;700;800&family=Source+Sans+3:ital,wght@0,400;0,600;0,700;1,400&family=JetBrains+Mono:wght@400;600&display=swap">
+<style>/* Layout: runbook. Hero band, sticky phase index on the left, one reading column with
+   dark command panels; each panel is labelled with where it runs (PC, VM, pod). */
+:root {
+  --bg: #f6f7f8; --surface: #ffffff; --fg: #17212b; --muted: #57636f; --line: #d5dbe1;
+  --accent: #0b6e78; --accent-soft: #e1f0f1; --band: #eef2f4;
+  --code-bg: #121b23; --code-fg: #e3e9ef; --code-muted: #8b9aa8;
+  --win: #2a5db0; --win-soft: #e3ecfa; --node: #2c7a4b; --node-soft: #e1f2e7; --pod: #6a49b5; --pod-soft: #ece6f8;
+  --tk-key: #ff9e7a; --tk-str: #a5d6a7; --tk-var: #8ecbff; --tk-num: #f3c969; --tk-com: #7f8e9c;
+  --font-display: "Archivo", "Helvetica Neue", Arial, sans-serif;
+  --font-body: "Source Sans 3", "Segoe UI", Roboto, Arial, sans-serif;
+  --font-mono: "JetBrains Mono", "Cascadia Mono", Consolas, "Liberation Mono", monospace;
+}
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) {
+  --bg: #0e1419; --surface: #141c23; --fg: #e3e9ee; --muted: #9caab6; --line: #2a3641;
+  --accent: #55bcc6; --accent-soft: #123239; --band: #18222b;
+  --code-bg: #0a1016; --code-fg: #e3e9ef; --code-muted: #8b9aa8;
+  --win: #8db4f2; --win-soft: #18283f; --node: #79c79a; --node-soft: #152b20; --pod: #b9a2f0; --pod-soft: #251d3a;
+  color-scheme: dark; } }
+:root[data-theme="dark"] {
+  --bg: #0e1419; --surface: #141c23; --fg: #e3e9ee; --muted: #9caab6; --line: #2a3641;
+  --accent: #55bcc6; --accent-soft: #123239; --band: #18222b;
+  --code-bg: #0a1016; --code-fg: #e3e9ef; --code-muted: #8b9aa8;
+  --win: #8db4f2; --win-soft: #18283f; --node: #79c79a; --node-soft: #152b20; --pod: #b9a2f0; --pod-soft: #251d3a;
+  color-scheme: dark; }
+
+* { box-sizing: border-box; }
+body { background: var(--bg); color: var(--fg); font: 17px/1.6 var(--font-body); margin: 0; }
+a { color: var(--accent); text-underline-offset: 2px; }
+a:focus-visible, button:focus-visible, summary:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; border-radius: 4px; }
+
+.hero { background: var(--surface); border-bottom: 1px solid var(--line);
+  padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px)); padding-block: 40px 28px; }
+.hero-in { max-width: 1120px; margin: 0 auto; display: grid; gap: 14px; }
+.kicker { margin: 0; font: 600 13px/1.3 var(--font-display); letter-spacing: .08em; text-transform: uppercase; color: var(--accent); }
+h1 { margin: 0; font: 800 clamp(34px, 5vw, 54px)/1.05 var(--font-display); letter-spacing: -.02em; text-wrap: balance; }
+.lede { margin: 0; max-width: 66ch; font-size: 19px; color: var(--muted); }
+.stack { list-style: none; margin: 0; padding: 0; display: flex; flex-wrap: wrap; gap: 8px; }
+.stack li { font: 500 13px/1 var(--font-mono); padding: 7px 10px; border: 1px solid var(--line); border-radius: 6px; background: var(--bg); }
+.meta { margin: 0; font-size: 15px; color: var(--muted); max-width: 90ch; }
+.pdf { margin-left: 8px; font-weight: 600; }
+.legend .where { justify-self: start; }
+.legend { display: grid; grid-template-columns: max-content 1fr; gap: 6px 12px; align-items: center; font-size: 14px; color: var(--muted); margin-top: 4px; }
+
+.where { display: inline-block; font: 600 12px/1 var(--font-mono); padding: 5px 8px; border-radius: 5px; white-space: nowrap; }
+.where.win { color: var(--win); background: var(--win-soft); }
+.where.node { color: var(--node); background: var(--node-soft); }
+.where.pod { color: var(--pod); background: var(--pod-soft); }
+.where.file { color: var(--code-muted); background: transparent; border: 1px solid #2a3641; }
+
+.layout { max-width: 1120px; margin: 0 auto; display: grid; grid-template-columns: 250px minmax(0, 1fr); gap: 40px;
+  padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px)); padding-block: 32px 64px; }
+.toc { position: sticky; top: calc(env(safe-area-inset-top, 0px) + 16px); align-self: start; max-height: calc(100vh - 32px); overflow: auto; font-size: 15px; }
+.toc summary { font: 700 13px/1 var(--font-display); text-transform: uppercase; letter-spacing: .08em; color: var(--muted); cursor: pointer; padding: 4px 0 10px; }
+.toc ol { list-style: none; margin: 0; padding: 0; display: grid; gap: 2px; }
+.toc a { display: grid; grid-template-columns: 26px 1fr; gap: 4px; padding: 6px 8px; border-radius: 6px; color: var(--fg); text-decoration: none; line-height: 1.3; }
+.toc a:hover { background: var(--accent-soft); }
+.toc a.active { background: var(--accent-soft); color: var(--accent); font-weight: 600; }
+.toc-num { font: 600 12px/1.6 var(--font-mono); color: var(--muted); font-variant-numeric: tabular-nums; }
+
+.content { min-width: 0; max-width: 820px; }
+.sec { padding-bottom: 28px; margin-bottom: 36px; border-bottom: 1px solid var(--line); }
+.sec:last-of-type { border-bottom: 0; }
+h2 { font: 700 30px/1.15 var(--font-display); letter-spacing: -.01em; margin: 0 0 18px; text-wrap: balance; scroll-margin-top: 16px; display: grid; gap: 6px; }
+.eyebrow { font: 600 13px/1 var(--font-mono); color: var(--accent); letter-spacing: .04em; text-transform: uppercase; }
+h3 { font: 700 20px/1.25 var(--font-display); margin: 32px 0 10px; scroll-margin-top: 16px; text-wrap: balance; }
+p, li { max-width: 72ch; }
+p { margin: 0 0 14px; }
+ul, ol { margin: 0 0 14px; padding-left: 1.3em; }
+li { margin: 4px 0; }
+strong { font-weight: 700; }
+code { font: 500 .86em var(--font-mono); background: var(--band); padding: .1em .35em; border-radius: 4px; overflow-wrap: anywhere; }
+
+.cmd { position: relative; margin: 12px 0 18px; background: var(--code-bg); border-radius: 10px; overflow: hidden; }
+.cmd-head { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; padding: 10px 86px 0 14px; }
+.where-note { font: 12px/1.4 var(--font-mono); color: var(--code-muted); }
+.copy { position: absolute; top: 8px; right: 8px; font: 600 12px/1 var(--font-body); color: var(--code-fg); background: transparent; border: 1px solid #3a4754; border-radius: 6px; padding: 7px 10px; cursor: pointer; }
+.copy:hover { background: #1f2b36; }
+.copy.done { color: #a5d6a7; border-color: #3f6b48; }
+.cmd pre { margin: 0; padding: 12px 14px 16px; overflow-x: auto; }
+.cmd pre code { background: none; padding: 0; color: var(--code-fg); font: 400 13.5px/1.55 var(--font-mono); white-space: pre; overflow-wrap: normal; }
+.cmd .k, .cmd .kn, .cmd .kd, .cmd .ow { color: var(--tk-key); }
+.cmd .s, .cmd .s1, .cmd .s2, .cmd .sh, .cmd .sb, .cmd .sd, .cmd .se { color: var(--tk-str); }
+.cmd .nv, .cmd .nb, .cmd .vg, .cmd .nf { color: var(--tk-var); }
+.cmd .m, .cmd .mi, .cmd .mf { color: var(--tk-num); }
+.cmd .c, .cmd .c1, .cmd .cm, .cmd .ch { color: var(--tk-com); font-style: italic; }
+
+.table-wrap { overflow-x: auto; margin: 12px 0 18px; border: 1px solid var(--line); border-radius: 10px; background: var(--surface); }
+table { border-collapse: collapse; width: 100%; font-size: 15px; }
+th, td { text-align: left; vertical-align: top; padding: 9px 12px; border-bottom: 1px solid var(--line); }
+th { font: 700 13px/1.3 var(--font-display); text-transform: uppercase; letter-spacing: .05em; color: var(--muted); background: var(--band); }
+tr:last-child td { border-bottom: 0; }
+
+.diagram { margin: 18px 0 22px; padding: 12px; background: var(--surface); border: 1px solid var(--line); border-radius: 12px; overflow-x: auto; }
+.diagram svg { display: block; width: 100%; min-width: 620px; height: auto; font-family: var(--font-body); }
+.diagram figcaption { font-size: 14px; color: var(--muted); margin-top: 6px; }
+.d-box { fill: none; stroke: var(--muted); stroke-width: 1.25; }
+.d-pod { fill: var(--accent-soft); stroke: var(--accent); stroke-width: 2; }
+.d-band { fill: var(--band); stroke: var(--line); stroke-width: 1; }
+.d-line line { stroke: var(--muted); stroke-width: 1.25; fill: none; }
+.d-arrowhead { fill: var(--muted); }
+.d-title { font: 700 15px var(--font-display); fill: var(--fg); }
+.d-name { font-size: 13px; font-weight: 700; fill: var(--fg); }
+.d-text { font-size: 11.5px; fill: var(--fg); }
+.d-quiet { font-size: 11.5px; fill: var(--muted); }
+.d-small { font-size: 10.5px; fill: var(--muted); }
+
+.foot { color: var(--muted); font-size: 14px; padding-top: 8px; }
+
+@media (max-width: 960px) {
+  .layout { grid-template-columns: minmax(0, 1fr); gap: 16px; }
+  .toc { position: static; max-height: none; border: 1px solid var(--line); border-radius: 10px; padding: 10px 12px; background: var(--surface); }
+  .legend { grid-template-columns: 1fr; }
+  .legend span:not(.where) { margin-bottom: 6px; }
+}
+@media (prefers-reduced-motion: reduce) { * { scroll-behavior: auto !important; } }
+@media (prefers-reduced-motion: no-preference) { html { scroll-behavior: smooth; } }
+
+/* print / PDF */
+.shell.print .toc, .shell.print .copy { display: none; }
+.shell.print .layout { grid-template-columns: minmax(0, 1fr); padding-block: 8px; }
+.shell.print .content { max-width: none; }
+.shell.print .cmd pre code { white-space: pre-wrap; overflow-wrap: anywhere; font-size: 11.5px; }
+.shell.print .sec { break-before: page; border-bottom: 0; }
+.shell.print .cmd, .shell.print .diagram, .shell.print tr { break-inside: avoid; }
+.shell.print .diagram svg { min-width: 0; }
+.shell.print .hero { padding-block: 24px; }
+@media print {
+  .toc, .copy { display: none; }
+  .layout { grid-template-columns: minmax(0, 1fr); }
+  .cmd pre code { white-space: pre-wrap; }
+}
+@media (max-width: 640px) { table { min-width: 560px; } h2 { font-size: 26px; } }
+.shell.print { font-size: 12.5px; line-height: 1.5; }
+.shell.print h1 { font-size: 34px; }
+.shell.print .lede { font-size: 14px; }
+.shell.print h2 { font-size: 22px; }
+.shell.print h3 { font-size: 15px; margin-top: 18px; }
+.shell.print p, .shell.print li { max-width: none; }
+.shell.print table { font-size: 11.5px; }
+.shell.print .cmd pre code { font-size: 10px; line-height: 1.45; }
+.shell.print .stack li, .shell.print .where { font-size: 10px; }
+.shell.print .sec { break-before: auto; }
+.shell.print .sec h2 { break-after: avoid; }
+.shell.print h3 { break-after: avoid; }
+
+.connect { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 8px; padding: 8px 14px 0; font: 12px/1.5 var(--font-mono); color: var(--code-muted); }
+.connect-lbl { font: 600 11px/1 var(--font-body, inherit); letter-spacing: .04em; text-transform: uppercase; color: var(--code-muted); margin-right: 2px; }
+.conn-cmd { display: inline-flex; align-items: center; gap: 6px; }
+.conn-cmd code { color: var(--code-fg, inherit); background: rgba(127,127,127,.16); padding: 2px 6px; border-radius: 4px; }
+.copy-mini { font: 600 11px/1 var(--font-body, inherit); padding: 4px 8px; border-radius: 6px; border: 1px solid rgba(127,127,127,.4); background: transparent; color: var(--code-muted); cursor: pointer; }
+.copy-mini:hover { color: var(--code-fg, inherit); }
+.copy-mini.done { color: var(--accent, #2bb3a3); border-color: currentColor; }
+.print .copy-mini { display: none; }
+</style>
+</head>
+<body>
+<div class="shell ">
+<header class="hero">
+  <div class="hero-in">
+    <p class="kicker">Companion to the RAC on kubeadm lab guide</p>
+    <h1>The Services, and why RAC needs them</h1>
+    <p class="lede">Eight Kubernetes Services stand in for the host names, VIPs, SCAN addresses and network access a RAC cluster normally gets from DNS and the data-centre network. What each one is for, where Grid and clients use it, and how to see it working.</p>
+    <ul class="stack">
+      <li>Headless Services</li><li>CoreDNS</li><li>publishNotReadyAddresses</li><li>NodePort</li><li>SCAN · VIP · local_listener</li>
+    </ul>
+    <p class="meta">25 Oct 2026 · The lab follows Oracle's <a href="https://docs.oracle.com/en/database/oracle/oracle-database/19/rackb/install-configure-rac-olcne.html">How to Install and Configure Oracle RAC on Oracle Cloud Native Environment</a>. This page explains guide steps 10.3 and 13.1 to 13.4 from the network's point of view. <a class="pdf" href="rac-k8s-services.pdf">PDF version</a></p>
+    <div class="legend" aria-label="Where commands run">
+      <span class="where win">PowerShell</span><span>on your PC</span>
+      <span class="where node">worker · controlplane</span><span>root shell on a VM</span>
+      <span class="where pod">racnode1-0</span><span>root shell in a RAC pod</span>
+          </div>
+  </div>
+</header>
+<div class="layout">
+  <nav class="toc" aria-label="Contents">
+    <details open><summary>Contents</summary><ol><li><a href="#at-a-glance"><span class="toc-num"></span>At a glance</a></li>
+<li><a href="#kubernetes-background-in-five-points"><span class="toc-num"></span>Kubernetes background in five points</a></li>
+<li><a href="#why-rac-needs-these-names-at-all"><span class="toc-num"></span>Why RAC needs these names at all</a></li>
+<li><a href="#the-node-names-racnode1-0-and-racnode2-0"><span class="toc-num"></span>The node names: racnode1-0 and racnode2-0</a></li>
+<li><a href="#the-vip-names-racnode1-0-vip-and-racnode2-0-vip"><span class="toc-num"></span>The VIP names: racnode1-0-vip and racnode2-0-vip</a></li>
+<li><a href="#the-scan-name-racnode-scan"><span class="toc-num"></span>The SCAN name: racnode-scan</a></li>
+<li><a href="#publishnotreadyaddresses-the-chicken-and-egg-it-solves"><span class="toc-num"></span>publishNotReadyAddresses: the chicken-and-egg it solves</a></li>
+<li><a href="#why-headless-and-not-a-normal-clusterip-service"><span class="toc-num"></span>Why headless and not a normal ClusterIP Service</a></li>
+<li><a href="#the-nodeport-services-reaching-rac-from-outside-the-cluster"><span class="toc-num"></span>The NodePort Services: reaching RAC from outside the cluster</a></li>
+<li><a href="#try-it-yourself"><span class="toc-num"></span>Try it yourself</a></li>
+<li><a href="#what-breaks-without-each-service"><span class="toc-num"></span>What breaks without each Service</a></li>
+<li><a href="#in-production"><span class="toc-num"></span>In production</a></li></ol></details>
+  </nav>
+  <main class="content"><section class="sec"><h2 id="at-a-glance">At a glance</h2>
+<p>The RAC pods need eight Kubernetes Services. Five are <strong>headless</strong> Services from guide 10.3: they exist only to put names in the cluster's DNS, the names Grid Infrastructure insists on. Three are <strong>NodePort</strong> Services from guide 13.3: they open ports on the nodes so clients outside the cluster can reach the listeners.</p>
+<figure class="diagram"><svg viewBox="0 0 760 470" role="img" aria-label="Five headless Services give Grid five names for two pods">
+<defs><marker id="names-arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path class="d-arrowhead" d="M0 0L10 5L0 10z"/></marker></defs>
+<text class="d-title" x="24" y="34">Five headless Services give Grid five names for two pods</text>
+<g class="d-line"><path d="M274 86H498" fill="none" marker-end="url(#names-arrow)"/><path d="M274 154H498" fill="none" marker-end="url(#names-arrow)"/><path d="M274 222H420V172H498" fill="none" marker-end="url(#names-arrow)"/><path d="M274 222H420V276H498" fill="none" marker-end="url(#names-arrow)"/><path d="M274 290H498" fill="none" marker-end="url(#names-arrow)"/><path d="M274 358H498" fill="none" marker-end="url(#names-arrow)"/></g>
+<rect class="d-box" x="24" y="60" width="250" height="52" rx="8"/>
+<text class="d-name" x="40" y="82">racnode1-0</text>
+<text class="d-text" x="40" y="100">Grid node name 1</text>
+<rect class="d-box" x="24" y="128" width="250" height="52" rx="8"/>
+<text class="d-name" x="40" y="150">racnode1-0-vip</text>
+<text class="d-text" x="40" y="168">node VIP name 1</text>
+<rect class="d-box" x="24" y="196" width="250" height="52" rx="8"/>
+<text class="d-name" x="40" y="218">racnode-scan</text>
+<text class="d-text" x="40" y="236">SCAN name; selector cluster=racnode</text>
+<rect class="d-box" x="24" y="264" width="250" height="52" rx="8"/>
+<text class="d-name" x="40" y="286">racnode2-0-vip</text>
+<text class="d-text" x="40" y="304">node VIP name 2</text>
+<rect class="d-box" x="24" y="332" width="250" height="52" rx="8"/>
+<text class="d-name" x="40" y="354">racnode2-0</text>
+<text class="d-text" x="40" y="372">Grid node name 2</text>
+<rect class="d-pod" x="500" y="60" width="236" height="120" rx="8"/>
+<text class="d-name" x="516" y="82">Pod racnode1-0 on worker1</text>
+<text class="d-text" x="516" y="100">eth0 10.244.1.5 (example)</text>
+<text class="d-text" x="516" y="116">labels:</text>
+<text class="d-text" x="516" y="132">  hostname=racnode1-0</text>
+<text class="d-text" x="516" y="148">  cluster=racnode</text>
+<rect class="d-pod" x="500" y="264" width="236" height="120" rx="8"/>
+<text class="d-name" x="516" y="286">Pod racnode2-0 on worker2</text>
+<text class="d-text" x="516" y="304">eth0 10.244.2.4 (example)</text>
+<text class="d-text" x="516" y="320">labels:</text>
+<text class="d-text" x="516" y="336">  hostname=racnode2-0</text>
+<text class="d-text" x="516" y="352">  cluster=racnode</text>
+<text class="d-quiet" x="428" y="214" text-anchor="start">both pods</text>
+<text class="d-quiet" x="24" y="412" text-anchor="start">CoreDNS answers racnode1-0.rac.svc.cluster.local, racnode1-0-vip..., racnode-scan... with these pod IPs.</text>
+<text class="d-quiet" x="24" y="430" text-anchor="start">Inside the pods the short names work too: the search domain rac.svc.cluster.local is added for you.</text>
+</svg><figcaption>Each name resolves to its pod's own IP; racnode-scan returns both. Example IPs; they change when a pod is recreated.</figcaption></figure>
+<div class="table-wrap"><table>
+<thead>
+<tr>
+<th>Service</th>
+<th>Type</th>
+<th>Selects</th>
+<th>A lookup returns</th>
+<th>Used by</th>
+<th>Guide</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>racnode1-0</code></td>
+<td>headless</td>
+<td>pod <code>racnode1-0</code></td>
+<td>racnode1-0's pod IP</td>
+<td>Grid: node name 1, SSH between nodes, cluster checks</td>
+<td>10.3</td>
+</tr>
+<tr>
+<td><code>racnode2-0</code></td>
+<td>headless</td>
+<td>pod <code>racnode2-0</code></td>
+<td>racnode2-0's pod IP</td>
+<td>Grid: node name 2</td>
+<td>10.3</td>
+</tr>
+<tr>
+<td><code>racnode1-0-vip</code></td>
+<td>headless</td>
+<td>pod <code>racnode1-0</code></td>
+<td>racnode1-0's pod IP</td>
+<td>Grid: node VIP 1; <code>local_listener</code> after 13.3</td>
+<td>10.3</td>
+</tr>
+<tr>
+<td><code>racnode2-0-vip</code></td>
+<td>headless</td>
+<td>pod <code>racnode2-0</code></td>
+<td>racnode2-0's pod IP</td>
+<td>Grid: node VIP 2; <code>local_listener</code> after 13.3</td>
+<td>10.3</td>
+</tr>
+<tr>
+<td><code>racnode-scan</code></td>
+<td>headless</td>
+<td>both pods (<code>cluster=racnode</code>)</td>
+<td><strong>both</strong> pod IPs</td>
+<td>Grid: SCAN name; every client connection</td>
+<td>10.3</td>
+</tr>
+<tr>
+<td><code>racnode-scan-lsnr</code></td>
+<td>NodePort 30200</td>
+<td>both pods</td>
+<td>(a port, not a name)</td>
+<td>clients outside the cluster: first hop to a SCAN listener</td>
+<td>13.3</td>
+</tr>
+<tr>
+<td><code>racnode1-np</code></td>
+<td>NodePort 30203, 30201</td>
+<td>pod <code>racnode1-0</code></td>
+<td>(ports)</td>
+<td>outside clients redirected to instance 1; FAN (ONS)</td>
+<td>13.3</td>
+</tr>
+<tr>
+<td><code>racnode2-np</code></td>
+<td>NodePort 30204, 30202</td>
+<td>pod <code>racnode2-0</code></td>
+<td>(ports)</td>
+<td>outside clients redirected to instance 2; FAN (ONS)</td>
+<td>13.3</td>
+</tr>
+</tbody>
+</table></div>
+<p><strong>In one sentence each:</strong> the node names identify the two cluster members, the VIP names are the per-node addresses clients are sent to, the SCAN name is the single name clients connect to, and the NodePorts carry those same conversations in from outside Kubernetes.</p>
+</section>
+<section class="sec"><h2 id="kubernetes-background-in-five-points">Kubernetes background in five points</h2>
+<p><strong>1. A Service selects pods by label.</strong> Every Service has a <code>selector</code>. Kubernetes keeps a list of the pods that match it, called its <strong>endpoints</strong> (stored as EndpointSlices). Our RAC pods carry two labels each, from the StatefulSets in guide 10.4:</p>
+<div class="table-wrap"><table>
+<thead>
+<tr>
+<th>Pod</th>
+<th><code>hostname</code> label</th>
+<th><code>cluster</code> label</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>racnode1-0</code></td>
+<td><code>racnode1-0</code></td>
+<td><code>racnode</code></td>
+</tr>
+<tr>
+<td><code>racnode2-0</code></td>
+<td><code>racnode2-0</code></td>
+<td><code>racnode</code></td>
+</tr>
+</tbody>
+</table></div>
+<p>The node and VIP Services select on the pod's name (<code>statefulset.kubernetes.io/pod-name</code>, which Kubernetes adds to every StatefulSet pod), so each matches exactly one pod. <code>racnode-scan</code> selects on <code>cluster: racnode</code>, so it matches both.</p>
+<p><strong>2. CoreDNS turns Services into names.</strong> Every Service gets the name <code>&lt;service&gt;.&lt;namespace&gt;.svc.cluster.local</code>. For our Services in namespace <code>rac</code>, that's for example <code>racnode-scan.rac.svc.cluster.local</code>. The <code>cluster.local</code> part comes from <code>dnsDomain</code> in the kubeadm configuration (guide 5.1).</p>
+<p><strong>3. The type decides what that name returns.</strong></p>
+<div class="table-wrap"><table>
+<thead>
+<tr>
+<th>Type</th>
+<th><code>clusterIP</code></th>
+<th>What a lookup returns</th>
+<th>How traffic flows</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>ClusterIP (the default)</td>
+<td>a virtual IP, such as <code>10.96.14.7</code></td>
+<td>that one virtual IP</td>
+<td>kube-proxy rewrites it to one of the pods, chosen per connection</td>
+</tr>
+<tr>
+<td><strong>Headless</strong></td>
+<td><code>None</code></td>
+<td><strong>the pod IPs themselves</strong>, one A record per pod</td>
+<td>straight to the pod; no translation</td>
+</tr>
+<tr>
+<td>NodePort</td>
+<td>a virtual IP, plus a port on every node</td>
+<td>the virtual IP</td>
+<td>any node's IP on the node port reaches a pod</td>
+</tr>
+</tbody>
+</table></div>
+<p>The five RAC name Services are headless (<code>clusterIP: None</code>). Why that matters for Grid is covered in "Why headless and not a normal ClusterIP Service".</p>
+<p><strong>4. Short names work inside the pods.</strong> A pod's <code>/etc/resolv.conf</code> has the search list <code>rac.svc.cluster.local svc.cluster.local cluster.local</code>. So inside a RAC pod, <code>racnode2-0</code> is enough; the resolver tries <code>racnode2-0.rac.svc.cluster.local</code> for you. A pod in another namespace (such as the test client <code>dbclient</code> in <code>rac-client</code>) must use the full name.</p>
+<p><strong>5. Readiness normally hides pods from DNS.</strong> By default a Service only lists pods that are <strong>Ready</strong>. The RAC pods' readiness probe only passes once something answers on port 1521, which is after Grid is installed. <code>publishNotReadyAddresses: true</code> switches that off for these Services; its own section explains why it's essential.</p>
+</section>
+<section class="sec"><h2 id="why-rac-needs-these-names-at-all">Why RAC needs these names at all</h2>
+<p>Before Grid Infrastructure is installed on any cluster, bare metal or not, the network team has to provide a set of names and addresses. The installer checks every one of them resolves before it does anything. On bare metal they come from DNS or <code>/etc/hosts</code>; here they come from the headless Services.</p>
+<div class="table-wrap"><table>
+<thead>
+<tr>
+<th>Grid needs</th>
+<th>On bare metal</th>
+<th>In this lab</th>
+<th>Where Grid is told about it</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>A public host name per node</td>
+<td>DNS / <code>/etc/hosts</code>: <code>node1 → 192.168.1.11</code></td>
+<td>Service <code>racnode1-0</code> → racnode1-0's pod IP</td>
+<td><code>clusterNodes=racnode1-0:racnode1-0-vip:HUB,...</code> in the response file (11.3)</td>
+</tr>
+<tr>
+<td>A virtual IP (VIP) per node</td>
+<td>a spare address on the public subnet, <code>node1-vip → 192.168.1.21</code></td>
+<td>Service <code>racnode1-0-vip</code> → <strong>the same</strong> pod IP</td>
+<td>the second field of each <code>clusterNodes</code> entry</td>
+</tr>
+<tr>
+<td>A SCAN name with 1–3 addresses</td>
+<td><code>cluster-scan → 192.168.1.31, .32, .33</code> (round robin)</td>
+<td>Service <code>racnode-scan</code> → both pod IPs</td>
+<td><code>scanName=racnode-scan</code>, <code>scanPort=1521</code></td>
+</tr>
+<tr>
+<td>A public network</td>
+<td>the server LAN, for example <code>192.168.1.0/24</code></td>
+<td>the Flannel pod network <code>10.244.0.0/16</code> on <code>eth0</code></td>
+<td><code>networkInterfaceList=eth0:10.244.0.0:1,...</code></td>
+</tr>
+<tr>
+<td>Private networks</td>
+<td>dedicated NICs, no DNS needed</td>
+<td>Multus <code>eth1</code>/<code>eth2</code>, fixed IPs (guide 6)</td>
+<td><code>networkInterfaceList=...,eth1:10.0.11.0:5,eth2:10.0.12.0:5</code></td>
+</tr>
+</tbody>
+</table></div>
+<p>Every address in the first three rows must also be <strong>on the public network</strong> Grid was given. The pod IPs are on <code>10.244.0.0/16</code>, which is exactly the public network in the response file. That's one reason the names must return pod IPs and nothing else (see "Why headless").</p>
+<p>The private networks need no Services at all: the interconnect uses fixed IP addresses on <code>eth1</code> and <code>eth2</code>, which Grid discovers from the interfaces.</p>
+</section>
+<section class="sec"><h2 id="the-node-names-racnode1-0-and-racnode2-0">The node names: racnode1-0 and racnode2-0</h2>
+<p><strong>What they are:</strong> the names of the two cluster members. They match the pods' host names, which come from the StatefulSet: pod <code>racnode1-0</code> has host name <code>racnode1-0</code>.</p>
+<p><strong>Where they're used:</strong></p>
+<ul>
+<li><strong>The Grid installer</strong> checks that each node name resolves and is reachable before installing (the cluster verification checks).</li>
+<li><strong>SSH between the nodes.</strong> The installers on racnode1-0 copy the software to racnode2-0 and run commands there over SSH as <code>grid</code> and <code>oracle</code> (guide 11.1 sets up the keys and the <code>known_hosts</code> entries for these names).</li>
+<li><strong>Clusterware itself.</strong> <code>olsnodes</code> lists the members by these names, and many resources are named after them (<code>ora.racnode1-0.vip</code>, for example).</li>
+</ul>
+<p><strong>Example, from inside a pod:</strong></p>
+<div class="cmd"><div class="cmd-head"><span class="where pod">racnode1-0</span><span class="where-note"></span></div><div class="connect"><span class="connect-lbl">Connect first</span><span class="conn-cmd"><code>ssh -p 2210 root@127.0.0.1</code><button class="copy-mini" type="button" data-copy="ssh -p 2210 root@127.0.0.1" aria-label="Copy ssh -p 2210 root@127.0.0.1">Copy</button></span>, then <span class="conn-cmd"><code>kubectl -n rac exec -it racnode1-0 -- bash</code><button class="copy-mini" type="button" data-copy="kubectl -n rac exec -it racnode1-0 -- bash" aria-label="Copy kubectl -n rac exec -it racnode1-0 -- bash">Copy</button></span></div><button class="copy" type="button" aria-label="Copy commands">Copy</button><pre><code>hostname
+getent<span class="w"> </span>hosts<span class="w"> </span>racnode1-0<span class="w"> </span>racnode2-0
+su<span class="w"> </span>-<span class="w"> </span>grid<span class="w"> </span>-c<span class="w"> </span><span class="s2">"olsnodes -n -s"</span>
+</code></pre></div>
+<p><code>hostname</code> prints <code>racnode1-0</code>; <code>getent</code> prints one pod IP per name, each with its full name <code>racnode1-0.rac.svc.cluster.local</code>; after Grid is installed <code>olsnodes</code> lists both nodes as <code>Active</code>.</p>
+<p><strong>Why a Service is needed even though the pod already knows its own name:</strong> a pod knows its own host name, but other pods can only find it through DNS, and DNS only has names for Services. Without these two Services, racnode1-0 couldn't resolve <code>racnode2-0</code>, and the installer would stop at its first check.</p>
+</section>
+<section class="sec"><h2 id="the-vip-names-racnode1-0-vip-and-racnode2-0-vip">The VIP names: racnode1-0-vip and racnode2-0-vip</h2>
+<p><strong>What a VIP is on bare metal:</strong> each RAC node has an extra public address, its virtual IP. Clients are sent to the VIP, not to the host address. If a node dies, Grid moves its VIP to a surviving node, where it immediately refuses connections. A client trying the dead node gets a quick "connection refused" instead of waiting for a TCP timeout, and moves on to the next address.</p>
+<p><strong>What it is here:</strong> <code>racnode1-0-vip</code> resolves to <strong>racnode1-0's own pod IP</strong>, the same address as <code>racnode1-0</code>. It's the doc's design, for a practical reason: an address can't move between workers. Flannel gives each worker its own slice of the pod network (for example <code>10.244.1.0/24</code> for worker1) and routes it only to that worker, so even if Grid moved the address to racnode2-0 on worker2, no packet for it would ever arrive there.</p>
+<p><strong>What still works, and what doesn't:</strong></p>
+<ul>
+<li>Grid still has a VIP resource per node (<code>ora.racnode1-0.vip</code>), and its configuration is complete.</li>
+<li><strong>Fast failover through VIP relocation doesn't happen here.</strong> Clients survive a node loss through <strong>SCAN</strong> instead: the SCAN name returns both pods, and the SCAN listeners only redirect to instances that are running.</li>
+<li>After guide 13.3, the VIP names gain a second job: each instance's <code>local_listener</code> names its VIP and a node port, for example <code>racnode1-0-vip.rac.svc.cluster.local:30203</code>. That's the address the SCAN listener tells clients to reconnect to.</li>
+</ul>
+<div class="cmd"><div class="cmd-head"><span class="where pod">racnode1-0</span><span class="where-note"></span></div><div class="connect"><span class="connect-lbl">Connect first</span><span class="conn-cmd"><code>ssh -p 2210 root@127.0.0.1</code><button class="copy-mini" type="button" data-copy="ssh -p 2210 root@127.0.0.1" aria-label="Copy ssh -p 2210 root@127.0.0.1">Copy</button></span>, then <span class="conn-cmd"><code>kubectl -n rac exec -it racnode1-0 -- bash</code><button class="copy-mini" type="button" data-copy="kubectl -n rac exec -it racnode1-0 -- bash" aria-label="Copy kubectl -n rac exec -it racnode1-0 -- bash">Copy</button></span></div><button class="copy" type="button" aria-label="Copy commands">Copy</button><pre><code>getent<span class="w"> </span>hosts<span class="w"> </span>racnode1-0<span class="w"> </span>racnode1-0-vip
+su<span class="w"> </span>-<span class="w"> </span>grid<span class="w"> </span>-c<span class="w"> </span><span class="s2">"srvctl config vip -n racnode1-0"</span>
+su<span class="w"> </span>-<span class="w"> </span>oracle<span class="w"> </span>-c<span class="w"> </span><span class="s2">"export ORACLE_SID=ORCLCDB1; echo 'show parameter local_listener' | sqlplus -s / as sysdba"</span>
+</code></pre></div>
+<p>Both names print the <strong>same</strong> IP. <code>srvctl</code> shows the VIP's name and address. <code>local_listener</code> shows the pod IP on 1522 before guide 13.3, and the VIP name on 30203 after it.</p>
+</section>
+<section class="sec"><h2 id="the-scan-name-racnode-scan">The SCAN name: racnode-scan</h2>
+<p><strong>What SCAN is:</strong> the Single Client Access Name. Clients connect to one name for the whole cluster and never need to know how many nodes there are. Grid starts a SCAN listener for each address the SCAN name returns.</p>
+<p><strong>Here:</strong> <code>racnode-scan</code> selects <strong>both</strong> pods (<code>cluster: racnode</code>), so CoreDNS returns two A records, one per pod. Grid creates two SCAN VIPs and two SCAN listeners: <code>LISTENER_SCAN1</code> and <code>LISTENER_SCAN2</code>, normally one in each pod. On bare metal you'd usually have three SCAN addresses; two is what two pods can give.</p>
+<figure class="diagram"><svg viewBox="0 0 760 240" role="img" aria-label="A SCAN connection takes two hops: SCAN listener, then the chosen instance">
+<defs><marker id="scan-arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path class="d-arrowhead" d="M0 0L10 5L0 10z"/></marker></defs>
+<text class="d-title" x="24" y="34">A SCAN connection takes two hops: SCAN listener, then the chosen instance</text>
+<g class="d-line"><path d="M184 102H206" fill="none" marker-end="url(#scan-arrow)"/><path d="M368 102H390" fill="none" marker-end="url(#scan-arrow)"/><path d="M552 102H574" fill="none" marker-end="url(#scan-arrow)"/></g>
+<rect class="d-box" x="24" y="56" width="160" height="92" rx="8"/>
+<text class="d-name" x="40" y="78">1 · Client pod</text>
+<text class="d-text" x="40" y="96">asks CoreDNS for</text>
+<text class="d-text" x="40" y="112">racnode-scan</text>
+<rect class="d-box" x="208" y="56" width="160" height="92" rx="8"/>
+<text class="d-name" x="224" y="78">2 · DNS answer</text>
+<text class="d-text" x="224" y="96">both pod IPs, from</text>
+<text class="d-text" x="224" y="112">the headless Service</text>
+<rect class="d-pod" x="392" y="56" width="160" height="92" rx="8"/>
+<text class="d-name" x="408" y="78">3 · SCAN listener</text>
+<text class="d-text" x="408" y="96">port 1521; picks the</text>
+<text class="d-text" x="408" y="112">less busy instance</text>
+<rect class="d-pod" x="576" y="56" width="160" height="92" rx="8"/>
+<text class="d-name" x="592" y="78">4 · Local listener</text>
+<text class="d-text" x="592" y="96">redirect target;</text>
+<text class="d-text" x="592" y="112">session in ORCLPDB</text>
+<rect class="d-band" x="24" y="168" width="712" height="48" rx="8"/>
+<text class="d-name" x="40" y="190">The client connects twice</text>
+<text class="d-text" x="40" y="208">first to the SCAN listener, then again to the address it was redirected to</text>
+</svg><figcaption>Inside the cluster. Before guide 13.3 the redirect target is the pod IP on port 1522; after it, the VIP name on 30203 or 30204.</figcaption></figure>
+<p><strong>A connection inside the cluster takes two hops:</strong></p>
+<ol>
+<li>The client asks CoreDNS for <code>racnode-scan.rac.svc.cluster.local</code> and gets both pod IPs.</li>
+<li>It connects to port 1521 on one of them: a SCAN listener.</li>
+<li>The SCAN listener knows which instances offer the requested service (<code>ORCLPDBSVC</code>) and how busy each is. It replies with a <strong>redirect</strong> to the chosen instance's local listener, at the address in that instance's <code>local_listener</code>.</li>
+<li>The client opens a second connection to that address and gets its session.</li>
+</ol>
+<p><strong>The redirect is why the names matter so much:</strong> whatever address the instance registered, the client must be able to reach it. Inside the cluster both the pod IP and the VIP name work. Outside the cluster neither does on its own, which is what the NodePort Services and the Windows hosts entries are for.</p>
+<div class="cmd"><div class="cmd-head"><span class="where node">controlplane</span><span class="where-note"></span></div><div class="connect"><span class="connect-lbl">Connect first</span><span class="conn-cmd"><code>ssh -p 2210 root@127.0.0.1</code><button class="copy-mini" type="button" data-copy="ssh -p 2210 root@127.0.0.1" aria-label="Copy ssh -p 2210 root@127.0.0.1">Copy</button></span></div><button class="copy" type="button" aria-label="Copy commands">Copy</button><pre><code>kubectl<span class="w"> </span>-n<span class="w"> </span>rac<span class="w"> </span>get<span class="w"> </span>endpointslices<span class="w"> </span>-l<span class="w"> </span>kubernetes.io/service-name<span class="o">=</span>racnode-scan
+kubectl<span class="w"> </span>-n<span class="w"> </span>rac<span class="w"> </span><span class="nb">exec</span><span class="w"> </span>racnode1-0<span class="w"> </span>--<span class="w"> </span>getent<span class="w"> </span>ahostsv4<span class="w"> </span>racnode-scan
+kubectl<span class="w"> </span>-n<span class="w"> </span>rac<span class="w"> </span><span class="nb">exec</span><span class="w"> </span>racnode1-0<span class="w"> </span>--<span class="w"> </span>su<span class="w"> </span>-<span class="w"> </span>grid<span class="w"> </span>-c<span class="w"> </span><span class="s2">"srvctl config scan; srvctl status scan_listener"</span>
+</code></pre></div>
+<p>The EndpointSlice and <code>getent</code> list both pod IPs. <code>srvctl</code> shows two SCAN VIPs and two SCAN listeners and the node each one runs on (normally one per node).</p>
+</section>
+<section class="sec"><h2 id="publishnotreadyaddresses-the-chicken-and-egg-it-solves">publishNotReadyAddresses: the chicken-and-egg it solves</h2>
+<figure class="diagram"><svg viewBox="0 0 760 250" role="img" aria-label="The pod only becomes Ready after Grid runs, so DNS must answer before Ready">
+<defs><marker id="ready-arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path class="d-arrowhead" d="M0 0L10 5L0 10z"/></marker></defs>
+<text class="d-title" x="24" y="34">The pod only becomes Ready after Grid runs, so DNS must answer before Ready</text>
+<g class="d-line"><path d="M184 102H206" fill="none" marker-end="url(#ready-arrow)"/><path d="M368 102H390" fill="none" marker-end="url(#ready-arrow)"/><path d="M552 102H574" fill="none" marker-end="url(#ready-arrow)"/></g>
+<rect class="d-box" x="24" y="56" width="160" height="92" rx="8"/>
+<text class="d-name" x="40" y="78">1 · Pod starts</text>
+<text class="d-text" x="40" y="96">Running, 0/1 Ready</text>
+<text class="d-text" x="40" y="112">(nothing on 1521)</text>
+<rect class="d-pod" x="208" y="56" width="160" height="92" rx="8"/>
+<text class="d-name" x="224" y="78">2 · Names resolve</text>
+<text class="d-text" x="224" y="96">node, VIP and SCAN</text>
+<text class="d-text" x="224" y="112">names → pod IPs</text>
+<rect class="d-box" x="392" y="56" width="160" height="92" rx="8"/>
+<text class="d-name" x="408" y="78">3 · Grid installs</text>
+<text class="d-text" x="408" y="96">checks the names,</text>
+<text class="d-text" x="408" y="112">starts listeners</text>
+<rect class="d-box" x="576" y="56" width="160" height="92" rx="8"/>
+<text class="d-name" x="592" y="78">4 · Pod Ready</text>
+<text class="d-text" x="592" y="96">readinessProbe:</text>
+<text class="d-text" x="592" y="112">TCP 1521 answers</text>
+<rect class="d-band" x="24" y="168" width="712" height="56" rx="8"/>
+<text class="d-name" x="40" y="190">Without publishNotReadyAddresses</text>
+<text class="d-text" x="40" y="208">step 2 returns no address, Grid's checks fail at step 3, and step 4 never comes</text>
+</svg><figcaption>publishNotReadyAddresses: true lets the headless Services publish the pod IPs from step 1.</figcaption></figure>
+<p><strong>The problem:</strong> Kubernetes normally publishes a pod in a Service's DNS only when the pod is <strong>Ready</strong>. The RAC pods are Ready only when port 1521 answers (the <code>readinessProbe</code> in guide 10.4), and nothing listens on 1521 until Grid is installed and its listeners start. But the Grid installer needs the node, VIP and SCAN names to resolve <strong>before</strong> it installs anything. Without help, each waits for the other forever.</p>
+<p><strong>The fix:</strong> <code>publishNotReadyAddresses: true</code> on all five headless Services. They publish the pod IPs as soon as the pods have them, Ready or not. This is also why <code>kubectl -n rac get pods</code> shows <code>0/1</code> until Grid is running, and that's expected.</p>
+<p><strong>Why keep the readiness probe at all:</strong> it still means something useful once Grid is up: <code>1/1</code> tells you the node's listener answers. Tools that look at readiness, such as <code>kubectl wait</code>, then reflect whether the node can serve connections.</p>
+<div class="cmd"><div class="cmd-head"><span class="where node">controlplane</span><span class="where-note"></span></div><div class="connect"><span class="connect-lbl">Connect first</span><span class="conn-cmd"><code>ssh -p 2210 root@127.0.0.1</code><button class="copy-mini" type="button" data-copy="ssh -p 2210 root@127.0.0.1" aria-label="Copy ssh -p 2210 root@127.0.0.1">Copy</button></span></div><button class="copy" type="button" aria-label="Copy commands">Copy</button><pre><code>kubectl<span class="w"> </span>-n<span class="w"> </span>rac<span class="w"> </span>get<span class="w"> </span>svc<span class="w"> </span>-o<span class="w"> </span>custom-columns<span class="o">=</span>NAME:.metadata.name,TYPE:.spec.type,CLUSTER-IP:.spec.clusterIP,NOTREADY:.spec.publishNotReadyAddresses
+</code></pre></div>
+<p>The five name Services show <code>CLUSTER-IP</code> <code>None</code> and <code>NOTREADY</code> <code>true</code>.</p>
+</section>
+<section class="sec"><h2 id="why-headless-and-not-a-normal-clusterip-service">Why headless and not a normal ClusterIP Service</h2>
+<p>A normal Service would give each name one stable virtual IP, which sounds attractive for a database. For Grid it breaks three things:</p>
+<ol>
+<li><strong>The address must be on Grid's public network.</strong> Grid's public network is the pod network <code>10.244.0.0/16</code>. A ClusterIP comes from the separate Service range (<code>10.96.0.0/12</code> by default) and isn't on any interface, so Grid's checks that each node, VIP and SCAN address belongs to the public network would fail.</li>
+<li><strong>Grid must reach the exact pod.</strong> A virtual IP is load-balanced by kube-proxy per connection. <code>racnode-scan</code> as a ClusterIP would hide the two SCAN listeners behind one address, and Grid couldn't bring up or check one SCAN VIP per node.</li>
+<li><strong>The redirect must reach the instance the listener chose.</strong> With headless Services the address in the redirect is the instance's own pod (or its VIP name, which resolves to that pod). Nothing in between can send the second connection to the wrong pod.</li>
+</ol>
+<p><strong>What headless gives up:</strong> the name's address changes when a pod is recreated and gets a new IP. Grid copes because it stores the node, VIP and SCAN entries as <strong>names</strong> and resolves them again when it starts (the restart test in guide 14.4 shows it).</p>
+</section>
+<section class="sec"><h2 id="the-nodeport-services-reaching-rac-from-outside-the-cluster">The NodePort Services: reaching RAC from outside the cluster</h2>
+<p>A client outside Kubernetes, such as Python on your Windows PC, has two problems: it can't resolve <code>*.svc.cluster.local</code> names, and it can't route to pod IPs. A <strong>NodePort</strong> Service opens one port on <strong>every</strong> node and forwards it to the selected pods; kube-proxy delivers it whichever node it arrives on.</p>
+<p>Oracle's document adds three NodePort Services (guide 13.3):</p>
+<div class="table-wrap"><table>
+<thead>
+<tr>
+<th>Service</th>
+<th>Node port → pod port</th>
+<th>Selects</th>
+<th>For</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>racnode-scan-lsnr</code></td>
+<td>30200 → 1521</td>
+<td>both pods</td>
+<td>the first hop: any SCAN listener</td>
+</tr>
+<tr>
+<td><code>racnode1-np</code></td>
+<td>30203 → 30203, 30201 → 6200</td>
+<td>racnode1-0</td>
+<td>the redirect to instance 1's listener <code>db-lsnr</code>; ONS (FAN events)</td>
+</tr>
+<tr>
+<td><code>racnode2-np</code></td>
+<td>30204 → 30204, 30202 → 6200</td>
+<td>racnode2-0</td>
+<td>the redirect to instance 2; ONS</td>
+</tr>
+</tbody>
+</table></div>
+<p><strong>Why the node port and the pod port are the same number for the redirect (30203 → 30203):</strong> the SCAN listener's redirect names a port, and the client uses that port exactly as given. The instance can only advertise one port, and it must work both inside the pod and on the node. So the doc adds a second node listener, <code>db-lsnr</code>, listening <strong>in the pod</strong> on 30203 and 30204, and points each instance's <code>local_listener</code> at its VIP name and that port.</p>
+<p><strong>Why the redirect names the VIP and not an IP:</strong> a name can mean different things in different places. Inside the cluster CoreDNS resolves <code>racnode1-0-vip.rac.svc.cluster.local</code> to the pod. On Windows the hosts file resolves it to <code>127.0.0.1</code>, where the VirtualBox port forward takes over. The same redirect works for both kinds of client.</p>
+<figure class="diagram"><svg viewBox="0 0 760 456" role="img" aria-label="From Windows, a connection crosses two NodePorts and one SCAN redirect">
+<defs><marker id="out-arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path class="d-arrowhead" d="M0 0L10 5L0 10z"/></marker></defs>
+<text class="d-title" x="24" y="34">From Windows, a connection crosses two NodePorts and one SCAN redirect</text>
+<g class="d-line"><path d="M380 104V118" fill="none" marker-end="url(#out-arrow)"/><path d="M380 168V182" fill="none" marker-end="url(#out-arrow)"/><path d="M380 232V246" fill="none" marker-end="url(#out-arrow)"/><path d="M380 296V310" fill="none" marker-end="url(#out-arrow)"/><path d="M380 360V374" fill="none" marker-end="url(#out-arrow)"/></g>
+<rect class="d-box" x="24" y="56" width="712" height="48" rx="8"/>
+<text class="d-name" x="40" y="78">1 · Python on Windows</text>
+<text class="d-text" x="40" y="96">connects to 127.0.0.1:30200 (service ORCLPDBSVC)</text>
+<rect class="d-box" x="24" y="120" width="712" height="48" rx="8"/>
+<text class="d-name" x="40" y="142">2 · VirtualBox port forward</text>
+<text class="d-text" x="40" y="160">127.0.0.1:30200 → worker1 10.0.1.11:30200</text>
+<rect class="d-box" x="24" y="184" width="712" height="48" rx="8"/>
+<text class="d-name" x="40" y="206">3 · NodePort racnode-scan-lsnr</text>
+<text class="d-text" x="40" y="224">30200 → port 1521 on either pod: a SCAN listener</text>
+<rect class="d-box" x="24" y="248" width="712" height="48" rx="8"/>
+<text class="d-name" x="40" y="270">4 · SCAN listener redirects</text>
+<text class="d-text" x="40" y="288">"reconnect to racnode1-0-vip.rac.svc.cluster.local:30203" (the instance's local_listener)</text>
+<rect class="d-box" x="24" y="312" width="712" height="48" rx="8"/>
+<text class="d-name" x="40" y="334">5 · Windows hosts file</text>
+<text class="d-text" x="40" y="352">racnode1-0-vip.rac.svc.cluster.local → 127.0.0.1</text>
+<rect class="d-pod" x="24" y="376" width="712" height="56" rx="8"/>
+<text class="d-name" x="40" y="398">6 · Port forward and NodePort racnode1-np</text>
+<text class="d-text" x="40" y="416">127.0.0.1:30203 → worker1:30203 → db-lsnr on 30203 in racnode1-0; session in ORCLPDB</text>
+</svg><figcaption>The lab path from guide 13.4. Steps 2 and 6 use VirtualBox port forwards to worker1; any node would do, kube-proxy finds the pod.</figcaption></figure>
+<p><strong>ONS ports (30201, 30202):</strong> Oracle Notification Service carries FAN events, for example "instance 2 is down", so connection pools can drop dead sessions at once. The lab exposes them as the doc does but doesn't test FAN from Windows.</p>
+<div class="cmd"><div class="cmd-head"><span class="where node">controlplane</span><span class="where-note"></span></div><div class="connect"><span class="connect-lbl">Connect first</span><span class="conn-cmd"><code>ssh -p 2210 root@127.0.0.1</code><button class="copy-mini" type="button" data-copy="ssh -p 2210 root@127.0.0.1" aria-label="Copy ssh -p 2210 root@127.0.0.1">Copy</button></span></div><button class="copy" type="button" aria-label="Copy commands">Copy</button><pre><code>kubectl<span class="w"> </span>-n<span class="w"> </span>rac<span class="w"> </span>get<span class="w"> </span>svc<span class="w"> </span>racnode-scan-lsnr<span class="w"> </span>racnode1-np<span class="w"> </span>racnode2-np
+kubectl<span class="w"> </span>-n<span class="w"> </span>rac<span class="w"> </span><span class="nb">exec</span><span class="w"> </span>racnode1-0<span class="w"> </span>--<span class="w"> </span>su<span class="w"> </span>-<span class="w"> </span>grid<span class="w"> </span>-c<span class="w"> </span><span class="s2">"srvctl config listener -listener db-lsnr"</span>
+</code></pre></div>
+<p>The three Services show their node ports; <code>db-lsnr</code> listens on <code>30203,30204</code>.</p>
+</section>
+<section class="sec"><h2 id="try-it-yourself">Try it yourself</h2>
+<p>Every Service, its selector and type:</p>
+<div class="cmd"><div class="cmd-head"><span class="where node">controlplane</span><span class="where-note"></span></div><div class="connect"><span class="connect-lbl">Connect first</span><span class="conn-cmd"><code>ssh -p 2210 root@127.0.0.1</code><button class="copy-mini" type="button" data-copy="ssh -p 2210 root@127.0.0.1" aria-label="Copy ssh -p 2210 root@127.0.0.1">Copy</button></span></div><button class="copy" type="button" aria-label="Copy commands">Copy</button><pre><code>kubectl<span class="w"> </span>-n<span class="w"> </span>rac<span class="w"> </span>get<span class="w"> </span>svc<span class="w"> </span>-o<span class="w"> </span><span class="s1">'custom-columns=NAME:.metadata.name,TYPE:.spec.type,CLUSTER-IP:.spec.clusterIP,SELECTOR:.spec.selector,NODEPORTS:.spec.ports[*].nodePort'</span>
+kubectl<span class="w"> </span>-n<span class="w"> </span>rac<span class="w"> </span>get<span class="w"> </span>endpointslices<span class="w"> </span>-o<span class="w"> </span><span class="s1">'custom-columns=SERVICE:.metadata.labels.kubernetes\.io/service-name,ADDRESSES:.endpoints[*].addresses'</span>
+kubectl<span class="w"> </span>-n<span class="w"> </span>rac<span class="w"> </span>get<span class="w"> </span>pods<span class="w"> </span>-o<span class="w"> </span>wide
+</code></pre></div>
+<p>The pod IPs in <code>get pods</code> are exactly the addresses in the EndpointSlices of the five headless Services; <code>racnode-scan</code> has both.</p>
+<p>What a pod sees, short and full names:</p>
+<div class="cmd"><div class="cmd-head"><span class="where pod">racnode1-0</span><span class="where-note"></span></div><div class="connect"><span class="connect-lbl">Connect first</span><span class="conn-cmd"><code>ssh -p 2210 root@127.0.0.1</code><button class="copy-mini" type="button" data-copy="ssh -p 2210 root@127.0.0.1" aria-label="Copy ssh -p 2210 root@127.0.0.1">Copy</button></span>, then <span class="conn-cmd"><code>kubectl -n rac exec -it racnode1-0 -- bash</code><button class="copy-mini" type="button" data-copy="kubectl -n rac exec -it racnode1-0 -- bash" aria-label="Copy kubectl -n rac exec -it racnode1-0 -- bash">Copy</button></span></div><button class="copy" type="button" aria-label="Copy commands">Copy</button><pre><code>cat<span class="w"> </span>/etc/resolv.conf
+<span class="k">for</span><span class="w"> </span>h<span class="w"> </span><span class="k">in</span><span class="w"> </span>racnode1-0<span class="w"> </span>racnode2-0<span class="w"> </span>racnode1-0-vip<span class="w"> </span>racnode2-0-vip<span class="w"> </span>racnode-scan<span class="p">;</span><span class="w"> </span><span class="k">do</span><span class="w"> </span><span class="nb">echo</span><span class="w"> </span><span class="s2">"</span><span class="nv">$h</span><span class="s2"> -&gt; </span><span class="k">$(</span>getent<span class="w"> </span>ahostsv4<span class="w"> </span><span class="nv">$h</span><span class="w"> </span><span class="p">|</span><span class="w"> </span>awk<span class="w"> </span><span class="s1">'{print $1}'</span><span class="w"> </span><span class="p">|</span><span class="w"> </span>sort<span class="w"> </span>-u<span class="w"> </span><span class="p">|</span><span class="w"> </span>xargs<span class="k">)</span><span class="s2">"</span><span class="p">;</span><span class="w"> </span><span class="k">done</span>
+</code></pre></div>
+<p>What a client in another namespace sees (it must use full names):</p>
+<div class="cmd"><div class="cmd-head"><span class="where node">controlplane</span><span class="where-note"></span></div><div class="connect"><span class="connect-lbl">Connect first</span><span class="conn-cmd"><code>ssh -p 2210 root@127.0.0.1</code><button class="copy-mini" type="button" data-copy="ssh -p 2210 root@127.0.0.1" aria-label="Copy ssh -p 2210 root@127.0.0.1">Copy</button></span></div><button class="copy" type="button" aria-label="Copy commands">Copy</button><pre><code>kubectl<span class="w"> </span>-n<span class="w"> </span>rac-client<span class="w"> </span><span class="nb">exec</span><span class="w"> </span>dbclient<span class="w"> </span>--<span class="w"> </span>getent<span class="w"> </span>ahostsv4<span class="w"> </span>racnode-scan.rac.svc.cluster.local
+kubectl<span class="w"> </span>-n<span class="w"> </span>rac-client<span class="w"> </span><span class="nb">exec</span><span class="w"> </span>dbclient<span class="w"> </span>--<span class="w"> </span>getent<span class="w"> </span>ahostsv4<span class="w"> </span>racnode-scan<span class="w"> </span><span class="o">||</span><span class="w"> </span><span class="nb">echo</span><span class="w"> </span><span class="s2">"short name doesn't resolve from another namespace, as expected"</span>
+</code></pre></div>
+<p>Where the SCAN listener sends clients (each instance's registered address):</p>
+<div class="cmd"><div class="cmd-head"><span class="where pod">racnode1-0</span><span class="where-note"></span></div><div class="connect"><span class="connect-lbl">Connect first</span><span class="conn-cmd"><code>ssh -p 2210 root@127.0.0.1</code><button class="copy-mini" type="button" data-copy="ssh -p 2210 root@127.0.0.1" aria-label="Copy ssh -p 2210 root@127.0.0.1">Copy</button></span>, then <span class="conn-cmd"><code>kubectl -n rac exec -it racnode1-0 -- bash</code><button class="copy-mini" type="button" data-copy="kubectl -n rac exec -it racnode1-0 -- bash" aria-label="Copy kubectl -n rac exec -it racnode1-0 -- bash">Copy</button></span></div><button class="copy" type="button" aria-label="Copy commands">Copy</button><pre><code>su<span class="w"> </span>-<span class="w"> </span>grid<span class="w"> </span>-c<span class="w"> </span><span class="s2">"lsnrctl services LISTENER_SCAN1"</span><span class="w"> </span><span class="p">|</span><span class="w"> </span>grep<span class="w"> </span>-iE<span class="w"> </span><span class="s1">'service "orclpdbsvc|instance|REMOTE SERVER|ADDRESS'</span>
+</code></pre></div>
+<p>The handlers listed under <code>ORCLPDBSVC</code> show the addresses the SCAN listener redirects to: pod IPs on 1522 before guide 13.3, the VIP names on 30203 and 30204 after it. <code>LISTENER_SCAN1</code> may run in either pod; if <code>lsnrctl</code> says it isn't running there, run the same in racnode2-0, or use <code>LISTENER_SCAN2</code>.</p>
+</section>
+<section class="sec"><h2 id="what-breaks-without-each-service">What breaks without each Service</h2>
+<div class="table-wrap"><table>
+<thead>
+<tr>
+<th>Missing or wrong</th>
+<th>Symptom</th>
+<th>When you'd see it</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>racnode1-0</code> / <code>racnode2-0</code></td>
+<td>the other node's name doesn't resolve; SSH between nodes and the installer's checks fail</td>
+<td>Grid install (guide 11.4)</td>
+</tr>
+<tr>
+<td><code>racnode1-0-vip</code> / <code>racnode2-0-vip</code></td>
+<td>the installer reports the VIP names don't resolve</td>
+<td>Grid install</td>
+</tr>
+<tr>
+<td><code>racnode-scan</code></td>
+<td>SCAN name doesn't resolve: install fails; later, clients can't connect at all</td>
+<td>Grid install, every client</td>
+</tr>
+<tr>
+<td><code>racnode-scan</code> with a selector matching one pod</td>
+<td>only one SCAN listener; clients still connect, but lose SCAN if that pod is down</td>
+<td>node failure</td>
+</tr>
+<tr>
+<td><code>publishNotReadyAddresses</code> missing</td>
+<td>names resolve to nothing while the pods are <code>0/1</code>, so the install can't start</td>
+<td>Grid install</td>
+</tr>
+<tr>
+<td>A ClusterIP instead of headless</td>
+<td>addresses not on Grid's public network; checks fail</td>
+<td>Grid install</td>
+</tr>
+<tr>
+<td><code>racnode-scan-lsnr</code> (NodePort)</td>
+<td>outside clients get "connection refused" on 30200</td>
+<td>Windows test (13.5)</td>
+</tr>
+<tr>
+<td><code>racnode1-np</code> / <code>racnode2-np</code></td>
+<td>the first hop works, the redirected second connection fails</td>
+<td>Windows test</td>
+</tr>
+<tr>
+<td>hosts entries on Windows</td>
+<td>the redirect name doesn't resolve on Windows: "could not resolve"</td>
+<td>Windows test</td>
+</tr>
+<tr>
+<td>port forwards 30200/30203/30204</td>
+<td>"actively refused" on 127.0.0.1 (issue #36 in the first build)</td>
+<td>Windows test</td>
+</tr>
+</tbody>
+</table></div>
+</section>
+<section class="sec"><h2 id="in-production">In production</h2>
+<ul>
+<li><strong>Applications inside the cluster</strong> are the simplest case: they use <code>racnode-scan.rac.svc.cluster.local:1521</code> and the headless Services exactly as in this lab, with no NodePorts at all.</li>
+<li><strong>Clients outside the cluster</strong> need a stable way in. NodePorts plus hosts-file entries work for a lab; in production you'd use DNS records in your corporate DNS for the VIP and SCAN names, pointing at the nodes (or at a load balancer) that carry the node ports, so every client resolves them without local changes. A <code>LoadBalancer</code> Service can replace the first hop, but the redirect still needs each instance's own reachable name and port, so it doesn't remove the per-instance Services.</li>
+<li><strong>VIP failover</strong> doesn't happen with an overlay pod network like Flannel, because an address can't move between workers. Plan on SCAN plus FAN (through ONS) for fast client failover, and test it.</li>
+<li><strong>GNS</strong> (Grid Naming Service, where Grid manages its own DNS sub-domain) isn't used: CoreDNS and the headless Services take its place.</li>
+<li><strong>Keep the names stable.</strong> Grid stores names, not IPs. Renaming a Service, the namespace or the cluster domain after the install means reconfiguring Grid.</li>
+</ul></section>
+  <footer class="foot">Built from the lab's build log and scripts (rac-k8s-poc). Values are from the author's lab; change them to match yours.</footer>
+  </main>
+</div>
+</div>
+<script>(function () {
+  // Copy buttons: copy the commands without the "where" label
+  document.querySelectorAll('.cmd').forEach(function (box) {
+    var btn = box.querySelector('.copy'), code = box.querySelector('pre code');
+    if (!btn || !code) return;
+    btn.addEventListener('click', function () {
+      var text = code.innerText.replace(/\n$/, '');
+      var done = function () { btn.textContent = 'Copied'; btn.classList.add('done'); setTimeout(function () { btn.textContent = 'Copy'; btn.classList.remove('done'); }, 1600); };
+      var fallback = function () {
+        var r = document.createRange(); r.selectNodeContents(code);
+        var s = window.getSelection(); s.removeAllRanges(); s.addRange(r);
+        btn.textContent = 'Selected: press Ctrl+C';
+      };
+      try {
+        if (navigator.clipboard && navigator.clipboard.writeText) navigator.clipboard.writeText(text).then(done, fallback);
+        else fallback();
+      } catch (e) { fallback(); }
+    });
+  });
+  // Highlight the current section in the contents
+  var links = Array.prototype.slice.call(document.querySelectorAll('.toc a'));
+  var map = {};
+  links.forEach(function (a) { map[a.getAttribute('href').slice(1)] = a; });
+  if ('IntersectionObserver' in window) {
+    var obs = new IntersectionObserver(function (entries) {
+      entries.forEach(function (e) {
+        if (e.isIntersecting) {
+          links.forEach(function (a) { a.classList.remove('active'); });
+          var a = map[e.target.id]; if (a) a.classList.add('active');
+        }
+      });
+    }, { rootMargin: '0px 0px -75% 0px' });
+    document.querySelectorAll('.sec h2[id]').forEach(function (h) { obs.observe(h); });
+  }
+  // Collapse the contents by default on narrow screens
+  if (window.matchMedia && window.matchMedia('(max-width: 960px)').matches) {
+    var d = document.querySelector('.toc details'); if (d) d.removeAttribute('open');
+  }
+})();
+(function () {
+  document.querySelectorAll('.copy-mini').forEach(function (b) {
+    b.addEventListener('click', function () {
+      var t = b.getAttribute('data-copy');
+      var ok = function () { b.textContent = 'Copied'; b.classList.add('done'); setTimeout(function () { b.textContent = 'Copy'; b.classList.remove('done'); }, 1600); };
+      try { if (navigator.clipboard && navigator.clipboard.writeText) navigator.clipboard.writeText(t).then(ok, function () { b.textContent = 'Select and copy'; }); else b.textContent = 'Select and copy'; } catch (e) { b.textContent = 'Select and copy'; }
+    });
+  });
+})();
+</script>
+
+</body>
+</html>

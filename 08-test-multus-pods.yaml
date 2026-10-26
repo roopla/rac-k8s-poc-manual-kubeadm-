@@ -1,0 +1,49 @@
+# 08-test-multus-pods.yaml
+# Two throwaway pods, one per worker, each with eth1/eth2 on the RAC private networks.
+# Proves VirtualBox promiscuous mode + macvlan + requested IPs work BEFORE any Oracle install.
+#   kubectl apply -f 08-test-multus-pods.yaml
+#   kubectl -n multus-rac exec nettest-w1 -- ip -4 addr
+#   kubectl -n multus-rac exec nettest-w1 -- ping -c3 10.0.11.149
+#   kubectl -n multus-rac exec nettest-w1 -- ping -c3 10.0.12.149
+#   kubectl delete -f 08-test-multus-pods.yaml
+apiVersion: v1
+kind: Pod
+metadata:
+  name: nettest-w1
+  namespace: multus-rac
+  annotations:
+    k8s.v1.cni.cncf.io/networks: '[
+      {"name":"macvlan-conf1","interface":"eth1","ips":["10.0.11.148/24"]},
+      {"name":"macvlan-conf2","interface":"eth2","ips":["10.0.12.148/24"]}
+    ]'
+spec:
+  nodeSelector:
+    kubernetes.io/hostname: worker1
+  containers:
+    - name: net
+      image: docker.io/library/busybox:1.36
+      command: ["sleep", "infinity"]
+      securityContext:
+        capabilities:
+          add: ["NET_RAW"]      # CRI-O drops NET_RAW by default, so ping needs it (the RAC pods add it too)
+---
+apiVersion: v1
+kind: Pod
+metadata:
+  name: nettest-w2
+  namespace: multus-rac
+  annotations:
+    k8s.v1.cni.cncf.io/networks: '[
+      {"name":"macvlan-conf1","interface":"eth1","ips":["10.0.11.149/24"]},
+      {"name":"macvlan-conf2","interface":"eth2","ips":["10.0.12.149/24"]}
+    ]'
+spec:
+  nodeSelector:
+    kubernetes.io/hostname: worker2
+  containers:
+    - name: net
+      image: docker.io/library/busybox:1.36
+      command: ["sleep", "infinity"]
+      securityContext:
+        capabilities:
+          add: ["NET_RAW"]      # CRI-O drops NET_RAW by default, so ping needs it (the RAC pods add it too)

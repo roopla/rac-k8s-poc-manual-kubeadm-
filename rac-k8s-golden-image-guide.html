@@ -1,0 +1,1043 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>RAC Golden Image Guide</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wght@500;600;700;800&family=Source+Sans+3:ital,wght@0,400;0,600;0,700;1,400&family=JetBrains+Mono:wght@400;600&display=swap">
+<style>/* Layout: runbook. Hero band, sticky phase index on the left, one reading column with
+   dark command panels; each panel is labelled with where it runs (PC, VM, pod). */
+:root {
+  --bg: #f6f7f8; --surface: #ffffff; --fg: #17212b; --muted: #57636f; --line: #d5dbe1;
+  --accent: #0b6e78; --accent-soft: #e1f0f1; --band: #eef2f4;
+  --code-bg: #121b23; --code-fg: #e3e9ef; --code-muted: #8b9aa8;
+  --win: #2a5db0; --win-soft: #e3ecfa; --node: #2c7a4b; --node-soft: #e1f2e7; --pod: #6a49b5; --pod-soft: #ece6f8;
+  --tk-key: #ff9e7a; --tk-str: #a5d6a7; --tk-var: #8ecbff; --tk-num: #f3c969; --tk-com: #7f8e9c;
+  --font-display: "Archivo", "Helvetica Neue", Arial, sans-serif;
+  --font-body: "Source Sans 3", "Segoe UI", Roboto, Arial, sans-serif;
+  --font-mono: "JetBrains Mono", "Cascadia Mono", Consolas, "Liberation Mono", monospace;
+}
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) {
+  --bg: #0e1419; --surface: #141c23; --fg: #e3e9ee; --muted: #9caab6; --line: #2a3641;
+  --accent: #55bcc6; --accent-soft: #123239; --band: #18222b;
+  --code-bg: #0a1016; --code-fg: #e3e9ef; --code-muted: #8b9aa8;
+  --win: #8db4f2; --win-soft: #18283f; --node: #79c79a; --node-soft: #152b20; --pod: #b9a2f0; --pod-soft: #251d3a;
+  color-scheme: dark; } }
+:root[data-theme="dark"] {
+  --bg: #0e1419; --surface: #141c23; --fg: #e3e9ee; --muted: #9caab6; --line: #2a3641;
+  --accent: #55bcc6; --accent-soft: #123239; --band: #18222b;
+  --code-bg: #0a1016; --code-fg: #e3e9ef; --code-muted: #8b9aa8;
+  --win: #8db4f2; --win-soft: #18283f; --node: #79c79a; --node-soft: #152b20; --pod: #b9a2f0; --pod-soft: #251d3a;
+  color-scheme: dark; }
+
+* { box-sizing: border-box; }
+body { background: var(--bg); color: var(--fg); font: 17px/1.6 var(--font-body); margin: 0; }
+a { color: var(--accent); text-underline-offset: 2px; }
+a:focus-visible, button:focus-visible, summary:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; border-radius: 4px; }
+
+.hero { background: var(--surface); border-bottom: 1px solid var(--line);
+  padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px)); padding-block: 40px 28px; }
+.hero-in { max-width: 1120px; margin: 0 auto; display: grid; gap: 14px; }
+.kicker { margin: 0; font: 600 13px/1.3 var(--font-display); letter-spacing: .08em; text-transform: uppercase; color: var(--accent); }
+h1 { margin: 0; font: 800 clamp(34px, 5vw, 54px)/1.05 var(--font-display); letter-spacing: -.02em; text-wrap: balance; }
+.lede { margin: 0; max-width: 66ch; font-size: 19px; color: var(--muted); }
+.stack { list-style: none; margin: 0; padding: 0; display: flex; flex-wrap: wrap; gap: 8px; }
+.stack li { font: 500 13px/1 var(--font-mono); padding: 7px 10px; border: 1px solid var(--line); border-radius: 6px; background: var(--bg); }
+.meta { margin: 0; font-size: 15px; color: var(--muted); max-width: 90ch; }
+.pdf { margin-left: 8px; font-weight: 600; }
+.legend .where { justify-self: start; }
+.legend { display: grid; grid-template-columns: max-content 1fr; gap: 6px 12px; align-items: center; font-size: 14px; color: var(--muted); margin-top: 4px; }
+
+.where { display: inline-block; font: 600 12px/1 var(--font-mono); padding: 5px 8px; border-radius: 5px; white-space: nowrap; }
+.where.win { color: var(--win); background: var(--win-soft); }
+.where.node { color: var(--node); background: var(--node-soft); }
+.where.pod { color: var(--pod); background: var(--pod-soft); }
+.where.file { color: var(--code-muted); background: transparent; border: 1px solid #2a3641; }
+
+.layout { max-width: 1120px; margin: 0 auto; display: grid; grid-template-columns: 250px minmax(0, 1fr); gap: 40px;
+  padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px)); padding-block: 32px 64px; }
+.toc { position: sticky; top: calc(env(safe-area-inset-top, 0px) + 16px); align-self: start; max-height: calc(100vh - 32px); overflow: auto; font-size: 15px; }
+.toc summary { font: 700 13px/1 var(--font-display); text-transform: uppercase; letter-spacing: .08em; color: var(--muted); cursor: pointer; padding: 4px 0 10px; }
+.toc ol { list-style: none; margin: 0; padding: 0; display: grid; gap: 2px; }
+.toc a { display: grid; grid-template-columns: 26px 1fr; gap: 4px; padding: 6px 8px; border-radius: 6px; color: var(--fg); text-decoration: none; line-height: 1.3; }
+.toc a:hover { background: var(--accent-soft); }
+.toc a.active { background: var(--accent-soft); color: var(--accent); font-weight: 600; }
+.toc-num { font: 600 12px/1.6 var(--font-mono); color: var(--muted); font-variant-numeric: tabular-nums; }
+
+.content { min-width: 0; max-width: 820px; }
+.sec { padding-bottom: 28px; margin-bottom: 36px; border-bottom: 1px solid var(--line); }
+.sec:last-of-type { border-bottom: 0; }
+h2 { font: 700 30px/1.15 var(--font-display); letter-spacing: -.01em; margin: 0 0 18px; text-wrap: balance; scroll-margin-top: 16px; display: grid; gap: 6px; }
+.eyebrow { font: 600 13px/1 var(--font-mono); color: var(--accent); letter-spacing: .04em; text-transform: uppercase; }
+h3 { font: 700 20px/1.25 var(--font-display); margin: 32px 0 10px; scroll-margin-top: 16px; text-wrap: balance; }
+p, li { max-width: 72ch; }
+p { margin: 0 0 14px; }
+ul, ol { margin: 0 0 14px; padding-left: 1.3em; }
+li { margin: 4px 0; }
+strong { font-weight: 700; }
+code { font: 500 .86em var(--font-mono); background: var(--band); padding: .1em .35em; border-radius: 4px; overflow-wrap: anywhere; }
+
+.cmd { position: relative; margin: 12px 0 18px; background: var(--code-bg); border-radius: 10px; overflow: hidden; }
+.cmd-head { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; padding: 10px 86px 0 14px; }
+.where-note { font: 12px/1.4 var(--font-mono); color: var(--code-muted); }
+.copy { position: absolute; top: 8px; right: 8px; font: 600 12px/1 var(--font-body); color: var(--code-fg); background: transparent; border: 1px solid #3a4754; border-radius: 6px; padding: 7px 10px; cursor: pointer; }
+.copy:hover { background: #1f2b36; }
+.copy.done { color: #a5d6a7; border-color: #3f6b48; }
+.cmd pre { margin: 0; padding: 12px 14px 16px; overflow-x: auto; }
+.cmd pre code { background: none; padding: 0; color: var(--code-fg); font: 400 13.5px/1.55 var(--font-mono); white-space: pre; overflow-wrap: normal; }
+.cmd .k, .cmd .kn, .cmd .kd, .cmd .ow { color: var(--tk-key); }
+.cmd .s, .cmd .s1, .cmd .s2, .cmd .sh, .cmd .sb, .cmd .sd, .cmd .se { color: var(--tk-str); }
+.cmd .nv, .cmd .nb, .cmd .vg, .cmd .nf { color: var(--tk-var); }
+.cmd .m, .cmd .mi, .cmd .mf { color: var(--tk-num); }
+.cmd .c, .cmd .c1, .cmd .cm, .cmd .ch { color: var(--tk-com); font-style: italic; }
+
+.table-wrap { overflow-x: auto; margin: 12px 0 18px; border: 1px solid var(--line); border-radius: 10px; background: var(--surface); }
+table { border-collapse: collapse; width: 100%; font-size: 15px; }
+th, td { text-align: left; vertical-align: top; padding: 9px 12px; border-bottom: 1px solid var(--line); }
+th { font: 700 13px/1.3 var(--font-display); text-transform: uppercase; letter-spacing: .05em; color: var(--muted); background: var(--band); }
+tr:last-child td { border-bottom: 0; }
+
+.diagram { margin: 18px 0 22px; padding: 12px; background: var(--surface); border: 1px solid var(--line); border-radius: 12px; overflow-x: auto; }
+.diagram svg { display: block; width: 100%; min-width: 620px; height: auto; font-family: var(--font-body); }
+.diagram figcaption { font-size: 14px; color: var(--muted); margin-top: 6px; }
+.d-box { fill: none; stroke: var(--muted); stroke-width: 1.25; }
+.d-pod { fill: var(--accent-soft); stroke: var(--accent); stroke-width: 2; }
+.d-band { fill: var(--band); stroke: var(--line); stroke-width: 1; }
+.d-line line { stroke: var(--muted); stroke-width: 1.25; fill: none; }
+.d-arrowhead { fill: var(--muted); }
+.d-title { font: 700 15px var(--font-display); fill: var(--fg); }
+.d-name { font-size: 13px; font-weight: 700; fill: var(--fg); }
+.d-text { font-size: 11.5px; fill: var(--fg); }
+.d-quiet { font-size: 11.5px; fill: var(--muted); }
+.d-small { font-size: 10.5px; fill: var(--muted); }
+
+.foot { color: var(--muted); font-size: 14px; padding-top: 8px; }
+
+@media (max-width: 960px) {
+  .layout { grid-template-columns: minmax(0, 1fr); gap: 16px; }
+  .toc { position: static; max-height: none; border: 1px solid var(--line); border-radius: 10px; padding: 10px 12px; background: var(--surface); }
+  .legend { grid-template-columns: 1fr; }
+  .legend span:not(.where) { margin-bottom: 6px; }
+}
+@media (prefers-reduced-motion: reduce) { * { scroll-behavior: auto !important; } }
+@media (prefers-reduced-motion: no-preference) { html { scroll-behavior: smooth; } }
+
+/* print / PDF */
+.shell.print .toc, .shell.print .copy { display: none; }
+.shell.print .layout { grid-template-columns: minmax(0, 1fr); padding-block: 8px; }
+.shell.print .content { max-width: none; }
+.shell.print .cmd pre code { white-space: pre-wrap; overflow-wrap: anywhere; font-size: 11.5px; }
+.shell.print .sec { break-before: page; border-bottom: 0; }
+.shell.print .cmd, .shell.print .diagram, .shell.print tr { break-inside: avoid; }
+.shell.print .diagram svg { min-width: 0; }
+.shell.print .hero { padding-block: 24px; }
+@media print {
+  .toc, .copy { display: none; }
+  .layout { grid-template-columns: minmax(0, 1fr); }
+  .cmd pre code { white-space: pre-wrap; }
+}
+@media (max-width: 640px) { table { min-width: 560px; } h2 { font-size: 26px; } }
+.shell.print { font-size: 12.5px; line-height: 1.5; }
+.shell.print h1 { font-size: 34px; }
+.shell.print .lede { font-size: 14px; }
+.shell.print h2 { font-size: 22px; }
+.shell.print h3 { font-size: 15px; margin-top: 18px; }
+.shell.print p, .shell.print li { max-width: none; }
+.shell.print table { font-size: 11.5px; }
+.shell.print .cmd pre code { font-size: 10px; line-height: 1.45; }
+.shell.print .stack li, .shell.print .where { font-size: 10px; }
+.shell.print .sec { break-before: auto; }
+.shell.print .sec h2 { break-after: avoid; }
+.shell.print h3 { break-after: avoid; }
+
+.connect { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 8px; padding: 8px 14px 0; font: 12px/1.5 var(--font-mono); color: var(--code-muted); }
+.connect-lbl { font: 600 11px/1 var(--font-body, inherit); letter-spacing: .04em; text-transform: uppercase; color: var(--code-muted); margin-right: 2px; }
+.conn-cmd { display: inline-flex; align-items: center; gap: 6px; }
+.conn-cmd code { color: var(--code-fg, inherit); background: rgba(127,127,127,.16); padding: 2px 6px; border-radius: 4px; }
+.copy-mini { font: 600 11px/1 var(--font-body, inherit); padding: 4px 8px; border-radius: 6px; border: 1px solid rgba(127,127,127,.4); background: transparent; color: var(--code-muted); cursor: pointer; }
+.copy-mini:hover { color: var(--code-fg, inherit); }
+.copy-mini.done { color: var(--accent, #2bb3a3); border-color: currentColor; }
+.print .copy-mini { display: none; }
+</style>
+</head>
+<body>
+<div class="shell ">
+<header class="hero">
+  <div class="hero-in">
+    <p class="kicker">Companion to the RAC on kubeadm lab guide</p>
+    <h1>The golden image</h1>
+    <p class="lede">Build one Oracle Linux 9.8 VM with everything the three lab nodes share, prove it with 20 checks, seal it and clone it. Or check and fix a golden image you already have.</p>
+    <ul class="stack">
+      <li>Oracle Linux 9.8 · UEK R7</li><li>VirtualBox 7</li><li>CRI-O 1.36 · kubeadm 1.36</li><li>SELinux rac-ocne</li>
+    </ul>
+    <p class="meta">24 Oct 2026 · Follows Oracle's <a href="https://docs.oracle.com/en/database/oracle/oracle-database/19/rackb/install-configure-rac-olcne.html">How to Install and Configure Oracle RAC on Oracle Cloud Native Environment</a>. This guide covers its golden-image part (lab guide Phases 0 to 3.1). <a class="pdf" href="rac-k8s-golden-image-guide.pdf">PDF version</a></p>
+    <div class="legend" aria-label="Where commands run">
+      <span class="where win">PowerShell</span><span>on your PC</span>
+      <span class="where node">golden VM</span><span>root shell on a VM</span>
+          </div>
+  </div>
+</header>
+<div class="layout">
+  <nav class="toc" aria-label="Contents">
+    <details open><summary>Contents</summary><ol><li><a href="#how-to-use-this-guide"><span class="toc-num"></span>How to use this guide</a></li>
+<li><a href="#what-the-golden-image-contains"><span class="toc-num"></span>What the golden image contains</a></li>
+<li><a href="#step-1-windows-host-and-virtualbox-networks"><span class="toc-num">1</span>Windows host and VirtualBox networks</a></li>
+<li><a href="#step-2-create-the-golden-vm-and-install-oracle-linux-98"><span class="toc-num">2</span>Create the golden VM and install Oracle Linux 9.8</a></li>
+<li><a href="#step-3-os-prep-for-kubernetes-and-rac"><span class="toc-num">3</span>OS prep for Kubernetes and RAC</a></li>
+<li><a href="#step-4-verify-the-golden-image"><span class="toc-num">4</span>Verify the golden image</a></li>
+<li><a href="#step-5-snapshot-and-seal"><span class="toc-num">5</span>Snapshot and seal</a></li>
+<li><a href="#check-and-fix-an-existing-golden-image"><span class="toc-num"></span>Check and fix an existing golden image</a></li>
+<li><a href="#next-clone-the-three-nodes"><span class="toc-num"></span>Next: clone the three nodes</a></li></ol></details>
+  </nav>
+  <main class="content"><section class="sec"><h2 id="how-to-use-this-guide">How to use this guide</h2>
+<p>This guide builds the <strong>golden image</strong>: one Oracle Linux 9.8 VM, prepared once with everything the three lab nodes have in common, then sealed and cloned into <code>controlplane</code>, <code>worker1</code> and <code>worker2</code>. It covers the same ground as Phases 0 to 3.1 of the <em>Oracle RAC 19c on kubeadm</em> learning guide, as a document you can use on its own.</p>
+<p>There are two ways through it:</p>
+<ul>
+<li><strong>Build a new golden image:</strong> Steps 1 to 5, in order.</li>
+<li><strong>Check and fix a golden image you already have:</strong> go to "Check and fix an existing golden image". It verifies every item from Step 3, fixes what's missing and seals the VM again. That's what was done to the lab's golden image on 24 Oct 2026.</li>
+</ul>
+<p>Every step has the same parts: <strong>What</strong> it does, <strong>Why</strong> it's needed (what breaks without it), the <strong>commands</strong> to copy and paste, and a <strong>Check</strong> of what you should see.</p>
+<h3 id="where-each-command-runs">Where each command runs</h3>
+<p>Every command block is labelled with where to paste it.</p>
+<div class="table-wrap"><table>
+<thead>
+<tr>
+<th>Label</th>
+<th>Where</th>
+<th>How to get there</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code># PowerShell</code></td>
+<td>Windows PowerShell on the PC</td>
+<td>Start menu, Windows PowerShell</td>
+</tr>
+<tr>
+<td><code># golden VM</code></td>
+<td>root shell on the golden VM</td>
+<td><code>ssh -p 2205 root@127.0.0.1</code></td>
+</tr>
+</tbody>
+</table></div>
+<p><strong>PowerShell is not bash.</strong> Blocks marked <code># golden VM</code> are bash; paste them only after you've connected with <code>ssh</code>. A bash heredoc (<code>&lt;&lt;'EOF'</code>) pasted into PowerShell fails with "Missing file specification after redirection operator".</p>
+<h3 id="lab-values">Lab values</h3>
+<div class="table-wrap"><table>
+<thead>
+<tr>
+<th>Item</th>
+<th>Value</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Windows host</td>
+<td>64 GB RAM, 8 threads, VirtualBox 7</td>
+</tr>
+<tr>
+<td>VM folder</td>
+<td><code>D:\VMs\rac-poc</code></td>
+</tr>
+<tr>
+<td>Oracle Linux ISO</td>
+<td><code>D:\ISO images\OracleLinux-R9-U8-x86_64-dvd-20260618.iso</code></td>
+</tr>
+<tr>
+<td>SSH key</td>
+<td><code>%USERPROFILE%\.ssh\id_ed25519</code></td>
+</tr>
+<tr>
+<td>NAT Network <code>k8s-public</code></td>
+<td>10.0.1.0/24, DHCP off</td>
+</tr>
+<tr>
+<td>Golden VM</td>
+<td><code>ol98-golden</code>, 10.0.1.5, SSH port 2205</td>
+</tr>
+<tr>
+<td>Versions in the lab (24 Oct 2026)</td>
+<td>UEK R7 5.15.0-325, CRI-O 1.36.7, Kubernetes 1.36.5</td>
+</tr>
+</tbody>
+</table></div>
+<p>The root password is typed at a prompt in Step 2 and never written to a file you keep.</p>
+</section>
+<section class="sec"><h2 id="what-the-golden-image-contains">What the golden image contains</h2>
+<p><strong>Why a golden image:</strong> every node needs the same kernel, packages, kernel settings and container runtime. Preparing them once and cloning three times is faster, and it guarantees the nodes match. RAC and Kubernetes both misbehave when nodes differ, and differences between nodes are hard to spot later.</p>
+<figure class="diagram"><svg viewBox="0 0 760 340" role="img" aria-label="One sealed golden image, cloned three times">
+<defs><marker id="lf-arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path class="d-arrowhead" d="M0 0L10 5L0 10z"/></marker></defs>
+<text class="d-title" x="24" y="34">One sealed golden image, cloned three times</text>
+<rect class="d-box" x="24" y="84" width="156" height="56" rx="8"/><text class="d-name" x="102" y="108" text-anchor="middle">2 · Install</text><text class="d-quiet" x="102" y="126" text-anchor="middle">OL 9.8 by kickstart</text>
+<rect class="d-box" x="208" y="84" width="156" height="56" rx="8"/><text class="d-name" x="286" y="108" text-anchor="middle">3 · Prepare</text><text class="d-quiet" x="286" y="126" text-anchor="middle">kernel, CRI-O, SELinux</text>
+<rect class="d-box" x="392" y="84" width="156" height="56" rx="8"/><text class="d-name" x="470" y="108" text-anchor="middle">4 · Verify</text><text class="d-quiet" x="470" y="126" text-anchor="middle">20 checks, all OK</text>
+<rect class="d-box" x="576" y="84" width="156" height="56" rx="8"/><text class="d-name" x="654" y="108" text-anchor="middle">5 · Snapshot, seal</text><text class="d-quiet" x="654" y="126" text-anchor="middle">no machine ID, no keys</text>
+<g class="d-line"><line x1="180" y1="112" x2="206" y2="112" marker-end="url(#lf-arrow)"/><line x1="364" y1="112" x2="390" y2="112" marker-end="url(#lf-arrow)"/><line x1="548" y1="112" x2="574" y2="112" marker-end="url(#lf-arrow)"/>
+<line x1="470" y1="140" x2="470" y2="166"/><line x1="470" y1="166" x2="286" y2="166"/><line x1="286" y1="166" x2="286" y2="142" marker-end="url(#lf-arrow)"/>
+<line x1="654" y1="140" x2="654" y2="220" marker-end="url(#lf-arrow)"/><line x1="576" y1="250" x2="540" y2="250" marker-end="url(#lf-arrow)"/></g>
+<text class="d-quiet" x="378" y="184" text-anchor="middle">FIX: run that step again</text>
+<rect class="d-pod" x="576" y="222" width="156" height="56" rx="8"/><text class="d-name" x="654" y="246" text-anchor="middle">Sealed golden VM</text><text class="d-text" x="654" y="264" text-anchor="middle">powered off, not booted</text>
+<rect class="d-band" x="24" y="204" width="514" height="92" rx="8"/><text class="d-name" x="40" y="226">Full clones (learning guide 3.2)</text>
+<rect class="d-box" x="40" y="240" width="150" height="40" rx="8"/><text class="d-text" x="115" y="264" text-anchor="middle">controlplane</text>
+<rect class="d-box" x="206" y="240" width="150" height="40" rx="8"/><text class="d-text" x="281" y="264" text-anchor="middle">worker1</text>
+<rect class="d-box" x="372" y="240" width="150" height="40" rx="8"/><text class="d-text" x="447" y="264" text-anchor="middle">worker2</text>
+<text class="d-quiet" x="24" y="322">Each clone then gets its own name, address, disks and private NICs (learning guide Phase 4).</text>
+</svg><figcaption>Golden image lifecycle. A verify that says FIX loops back; only a verified image is sealed and cloned.</figcaption></figure>
+<h3 id="in-the-golden-image-same-on-every-node">In the golden image (same on every node)</h3>
+<div class="table-wrap"><table>
+<thead>
+<tr>
+<th>Area</th>
+<th>What</th>
+<th>Why</th>
+<th>Step</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>VM hardware</td>
+<td>2 vCPU, 4 GB, 50 GB OS disk, KVM paravirtualisation, NIC1 on <code>k8s-public</code>, NIC2/NIC3 on <code>rac-priv1</code>/<code>rac-priv2</code> with promiscuous mode Allow All, SATA ports fixed</td>
+<td>Clones inherit it; workers are resized after cloning</td>
+<td>2.1</td>
+</tr>
+<tr>
+<td>OS</td>
+<td>Oracle Linux 9.8 minimal, SELinux enforcing, firewall off, no swap partition, root SSH key</td>
+<td>The doc runs SELinux enforcing; Kubernetes needs swap off</td>
+<td>2.2</td>
+</tr>
+<tr>
+<td>Kernel</td>
+<td>Newest UEK R7 (5.15.0) as the default</td>
+<td>The Oracle doc is tested on UEK R7</td>
+<td>3.1</td>
+</tr>
+<tr>
+<td>Kernel arguments</td>
+<td><code>transparent_hugepage=madvise clocksource=tsc</code></td>
+<td>THP <code>always</code> causes RAC node evictions; a stable clock for Grid</td>
+<td>3.2</td>
+</tr>
+<tr>
+<td>Swap</td>
+<td>Off, and commented out in <code>/etc/fstab</code></td>
+<td>The kubelet refuses to run with swap on</td>
+<td>3.3</td>
+</tr>
+<tr>
+<td>Kernel modules</td>
+<td><code>overlay</code>, <code>br_netfilter</code> loaded at boot</td>
+<td>Container layers and pod traffic through iptables</td>
+<td>3.4</td>
+</tr>
+<tr>
+<td>sysctls</td>
+<td><code>90-k8s.conf</code> (bridge, ip_forward), <code>91-oracle-rac.conf</code> (file-max, socket buffers, aio-max-nr)</td>
+<td>Host-wide settings pods can't set themselves</td>
+<td>3.4</td>
+</tr>
+<tr>
+<td>Time and firewall</td>
+<td><code>chronyd</code> on, <code>firewalld</code> off</td>
+<td>Grid and Kubernetes need the same time on every node</td>
+<td>3.5</td>
+</tr>
+<tr>
+<td>Tools</td>
+<td>podman, unzip, jq, iproute-tc, tar, rsync, lsof, bash-completion, SELinux tools</td>
+<td>podman builds the RAC image; unzip unpacks the Oracle homes</td>
+<td>3.6</td>
+</tr>
+<tr>
+<td>SELinux policy</td>
+<td>Module <code>rac-ocne</code>; boolean <code>container_manage_cgroup on</code></td>
+<td>Oracle binaries in the pods; systemd inside a pod manages its cgroups</td>
+<td>3.6</td>
+</tr>
+<tr>
+<td>Kubernetes</td>
+<td>Repos pinned to 1.36 with <code>exclude=</code>; <code>cri-o</code>, <code>kubelet</code>, <code>kubeadm</code>, <code>kubectl</code>, <code>cri-tools</code>; <code>/etc/crictl.yaml</code></td>
+<td>One runtime shared with podman, so the RAC image needs no registry</td>
+<td>3.7</td>
+</tr>
+<tr>
+<td>CRI-O config</td>
+<td><code>selinux = true</code>; pause image = kubeadm's; no sample bridge network; <code>crio</code> and <code>kubelet</code> enabled</td>
+<td>SELinux labels for the policy module; no pause-image mismatch</td>
+<td>3.8</td>
+</tr>
+<tr>
+<td>Images</td>
+<td>The 7 control-plane images pulled</td>
+<td>Each clone starts with them in place</td>
+<td>3.8</td>
+</tr>
+<tr>
+<td>Names</td>
+<td><code>controlplane</code>, <code>worker1</code>, <code>worker2</code> in <code>/etc/hosts</code>; kubectl and crictl completion</td>
+<td>Nodes resolve each other before DNS exists</td>
+<td>3.9</td>
+</tr>
+</tbody>
+</table></div>
+<h3 id="left-for-each-clone-never-in-the-golden-image">Left for each clone (never in the golden image)</h3>
+<div class="table-wrap"><table>
+<thead>
+<tr>
+<th>Item</th>
+<th>Why it can't be in the golden image</th>
+<th>Where it's done</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Machine ID and SSH host keys</td>
+<td>Must be unique; Kubernetes refuses duplicate machine IDs</td>
+<td>Removed by the seal (Step 5); regenerated at the clone's first boot</td>
+</tr>
+<tr>
+<td>Hardware UUID and MAC addresses</td>
+<td>kubeadm checks <code>product_uuid</code></td>
+<td>VirtualBox, when it makes a full clone</td>
+</tr>
+<tr>
+<td>Host name, IP address, kubelet node IP</td>
+<td>Different per node</td>
+<td>Learning guide Phase 4</td>
+</tr>
+<tr>
+<td>CPU, memory, data disks</td>
+<td>The control plane and the workers are sized differently</td>
+<td>Learning guide 3.2</td>
+</tr>
+<tr>
+<td>Private NICs up with no IP, promiscuous (workers)</td>
+<td>Only workers run RAC pods</td>
+<td>Learning guide 4.3 and 4.4, step c</td>
+</tr>
+<tr>
+<td><code>/scratch</code> and <code>/var/lib/containers</code> disks, doc directories, HugePages (workers)</td>
+<td>Worker-only, and the disks only exist after cloning</td>
+<td>Learning guide 4.3 and 4.4, steps d to g</td>
+</tr>
+<tr>
+<td>Shared ASM disks</td>
+<td>Attached to the two workers only</td>
+<td>Learning guide 3.3</td>
+</tr>
+<tr>
+<td>Kubernetes cluster membership</td>
+<td>Created by <code>kubeadm init</code> and <code>join</code></td>
+<td>Learning guide Phase 5</td>
+</tr>
+</tbody>
+</table></div>
+</section>
+<section class="sec"><h2 id="step-1-windows-host-and-virtualbox-networks"><span class="eyebrow">Step 1</span>Windows host and VirtualBox networks</h2>
+<p><strong>Result of this step:</strong> an SSH key, an SSH configuration for the lab, and the VirtualBox networks every VM will use.</p>
+<h3 id="11-check-the-host">1.1 Check the host</h3>
+<p><strong>Why:</strong> two workers of 22 GB, a 4 GB control plane and Windows itself need about 56 GB of the 64 GB. Worker vCPUs come from the host's thread count: with 8 threads, workers get 4 vCPUs and each RAC pod 3 CPUs. Giving 6 vCPUs to each worker on an 8-thread host overcommitted the CPU in the first build.</p>
+<div class="cmd"><div class="cmd-head"><span class="where win">PowerShell</span><span class="where-note"></span></div><button class="copy" type="button" aria-label="Copy commands">Copy</button><pre><code><span class="nb">Get-CimInstance</span> <span class="n">Win32_Processor</span> <span class="p">|</span> <span class="nb">Select-Object</span> <span class="n">NumberOfCores</span><span class="p">,</span> <span class="n">NumberOfLogicalProcessors</span>
+<span class="no">[Math]</span><span class="p">::</span><span class="n">Round</span><span class="p">((</span><span class="nb">Get-CimInstance</span> <span class="n">Win32_ComputerSystem</span><span class="p">).</span><span class="n">TotalPhysicalMemory</span> <span class="p">/</span> <span class="n">1GB</span><span class="p">)</span>
+<span class="nb">Get-PSDrive</span> <span class="n">D</span> <span class="p">|</span> <span class="nb">Select-Object</span> <span class="n">Used</span><span class="p">,</span> <span class="n">Free</span>
+</code></pre></div>
+<p><strong>Check:</strong> 8 or more logical processors, about 64 GB RAM, 250 GB or more free on D:. If you can, turn off Hyper-V, WSL2 and Memory Integrity so VirtualBox uses its own hypervisor; under Hyper-V it runs noticeably slower.</p>
+<h3 id="12-ssh-key-and-lab-ssh-settings">1.2 SSH key and lab SSH settings</h3>
+<p><strong>Why:</strong> every VM gets this public key at install, so you log in without a password. All VMs are reached through <code>127.0.0.1</code> on different ports, and their host keys change when the golden image is sealed and cloned; the settings below stop SSH refusing those changes. They are for this lab only.</p>
+<div class="cmd"><div class="cmd-head"><span class="where win">PowerShell</span><span class="where-note"></span></div><button class="copy" type="button" aria-label="Copy commands">Copy</button><pre><code><span class="k">if</span> <span class="p">(</span><span class="o">-not</span> <span class="p">(</span><span class="nb">Test-Path</span> <span class="s2">"$env:USERPROFILE\.ssh\id_ed25519"</span><span class="p">))</span> <span class="p">{</span> <span class="n">ssh-keygen</span> <span class="n">-t</span> <span class="n">ed25519</span> <span class="p">}</span>   <span class="c"># press Enter at every prompt</span>
+<span class="nv">$cfg</span> <span class="p">=</span> <span class="s2">"$env:USERPROFILE\.ssh\config"</span>
+<span class="k">if</span> <span class="p">(</span><span class="o">-not</span> <span class="p">((</span><span class="nb">Test-Path</span> <span class="nv">$cfg</span><span class="p">)</span> <span class="o">-and</span> <span class="p">(</span><span class="nb">Select-String</span> <span class="n">-Path</span> <span class="nv">$cfg</span> <span class="n">-Pattern</span> <span class="s1">'^Host 127\.0\.0\.1$'</span> <span class="n">-Quiet</span><span class="p">)))</span> <span class="p">{</span>
+<span class="sh">@'</span>
+
+<span class="sh">Host 127.0.0.1</span>
+<span class="sh">    User root</span>
+<span class="sh">    StrictHostKeyChecking no</span>
+<span class="sh">    UserKnownHostsFile ~/.ssh/known_hosts_rac_lab</span>
+<span class="sh">    LogLevel ERROR</span>
+<span class="sh">    ServerAliveInterval 30</span>
+<span class="sh">'@</span> <span class="p">|</span> <span class="nb">Add-Content</span> <span class="n">-Encoding</span> <span class="n">ascii</span> <span class="nv">$cfg</span>
+<span class="p">}</span>
+<span class="nb">Get-Content</span> <span class="s2">"$env:USERPROFILE\.ssh\id_ed25519.pub"</span>
+<span class="nb">Select-String</span> <span class="n">-Path</span> <span class="nv">$cfg</span> <span class="n">-Pattern</span> <span class="s1">'^Host 127\.0\.0\.1$'</span> <span class="n">-Context</span> <span class="n">0</span><span class="p">,</span><span class="n">5</span>
+</code></pre></div>
+<p>The key is only created if you don't have one yet, and the settings are only added once, so the block is safe to run again.</p>
+<p><strong>Check:</strong> one <code>ssh-ed25519 ...</code> line (your public key), then the <code>Host 127.0.0.1</code> section with its five settings.</p>
+<h3 id="13-the-virtualbox-networks">1.3 The VirtualBox networks</h3>
+<p><strong>What:</strong> one NAT Network for the public side, SSH port forwards into it, and two internal networks for the RAC interconnect.</p>
+<p><strong>Why:</strong></p>
+<ul>
+<li><strong><code>k8s-public</code> (10.0.1.0/24):</strong> every VM on one network with internet access through NAT. Kubernetes, Flannel's pod traffic and later the RAC public network all run here. DHCP is off because every node gets a fixed address; Kubernetes and Grid both depend on addresses not changing.</li>
+<li><strong>Port forwards:</strong> the NAT Network can't be reached from Windows directly, so <code>127.0.0.1:2205/2210/2211/2212</code> are forwarded to SSH on each VM.</li>
+<li><strong><code>rac-priv1</code> and <code>rac-priv2</code>:</strong> two isolated internal networks for the RAC private interconnect (cache fusion and the cluster heartbeat). Two of them give Grid's HAIP redundancy. VirtualBox creates internal networks when a NIC is attached to them, so there is nothing to create here.</li>
+</ul>
+<div class="cmd"><div class="cmd-head"><span class="where win">PowerShell</span><span class="where-note"></span></div><button class="copy" type="button" aria-label="Copy commands">Copy</button><pre><code><span class="nv">$VB</span> <span class="p">=</span> <span class="s2">"C:\Program Files\Oracle\VirtualBox\VBoxManage.exe"</span>
+<span class="p">&amp;</span> <span class="nv">$VB</span> <span class="n">natnetwork</span> <span class="n">add</span> <span class="p">-</span><span class="n">-netname</span> <span class="n">k8s-public</span> <span class="p">-</span><span class="n">-network</span> <span class="s2">"10.0.1.0/24"</span> <span class="p">-</span><span class="n">-enable</span> <span class="p">-</span><span class="n">-dhcp</span> <span class="n">off</span>
+<span class="p">&amp;</span> <span class="nv">$VB</span> <span class="n">natnetwork</span> <span class="n">modify</span> <span class="p">-</span><span class="n">-netname</span> <span class="n">k8s-public</span> <span class="p">-</span><span class="n">-port-forward</span><span class="p">-</span><span class="n">4</span> <span class="s2">"ssh-golden:tcp:[]:2205:[10.0.1.5]:22"</span>
+<span class="p">&amp;</span> <span class="nv">$VB</span> <span class="n">natnetwork</span> <span class="n">modify</span> <span class="p">-</span><span class="n">-netname</span> <span class="n">k8s-public</span> <span class="p">-</span><span class="n">-port-forward</span><span class="p">-</span><span class="n">4</span> <span class="s2">"ssh-cp:tcp:[]:2210:[10.0.1.10]:22"</span>
+<span class="p">&amp;</span> <span class="nv">$VB</span> <span class="n">natnetwork</span> <span class="n">modify</span> <span class="p">-</span><span class="n">-netname</span> <span class="n">k8s-public</span> <span class="p">-</span><span class="n">-port-forward</span><span class="p">-</span><span class="n">4</span> <span class="s2">"ssh-w1:tcp:[]:2211:[10.0.1.11]:22"</span>
+<span class="p">&amp;</span> <span class="nv">$VB</span> <span class="n">natnetwork</span> <span class="n">modify</span> <span class="p">-</span><span class="n">-netname</span> <span class="n">k8s-public</span> <span class="p">-</span><span class="n">-port-forward</span><span class="p">-</span><span class="n">4</span> <span class="s2">"ssh-w2:tcp:[]:2212:[10.0.1.12]:22"</span>
+<span class="p">&amp;</span> <span class="nv">$VB</span> <span class="n">natnetwork</span> <span class="nb">start </span><span class="p">-</span><span class="n">-netname</span> <span class="n">k8s-public</span>
+<span class="p">&amp;</span> <span class="nv">$VB</span> <span class="n">natnetwork</span> <span class="n">list</span>
+</code></pre></div>
+<p><strong>Check:</strong> <code>natnetwork list</code> shows <code>k8s-public</code>, <code>10.0.1.0/24</code>, DHCP disabled, and the four <code>ssh-*</code> rules.</p>
+</section>
+<section class="sec"><h2 id="step-2-create-the-golden-vm-and-install-oracle-linux-98"><span class="eyebrow">Step 2</span>Create the golden VM and install Oracle Linux 9.8</h2>
+<p><strong>Result of this step:</strong> a VM called <code>ol98-golden</code> with a minimal Oracle Linux 9.8 install, reachable as <code>ssh -p 2205 root@127.0.0.1</code>.</p>
+<h3 id="21-create-the-vm">2.1 Create the VM</h3>
+<p><strong>Why each setting:</strong></p>
+<ul>
+<li><strong>2 vCPU, 4 GB, 50 GB disk:</strong> enough to install and prepare; each clone is resized later.</li>
+<li><strong><code>--paravirtprovider kvm</code>:</strong> Oracle Linux's UEK kernel runs best with KVM paravirtualisation (stable clock, lower overhead).</li>
+<li><strong>NIC1 on <code>k8s-public</code>;</strong> <strong>NIC2 and NIC3 on <code>rac-priv1</code> and <code>rac-priv2</code> with promiscuous mode <code>allow-all</code>.</strong> RAC pods will put their own MAC addresses on these NICs through macvlan, and VirtualBox only delivers frames for unknown MACs in allow-all mode. Without it, the interconnect drops every packet.</li>
+<li><strong>Fixed SATA ports:</strong> port 0 for the OS disk, ports 1 and 2 later for the worker data disks, 3 and 4 for the shared ASM disks, 5 for the DVD.</li>
+</ul>
+<div class="cmd"><div class="cmd-head"><span class="where win">PowerShell</span><span class="where-note"></span></div><button class="copy" type="button" aria-label="Copy commands">Copy</button><pre><code><span class="nv">$VB</span> <span class="p">=</span> <span class="s2">"C:\Program Files\Oracle\VirtualBox\VBoxManage.exe"</span>
+<span class="nv">$Base</span> <span class="p">=</span> <span class="s2">"D:\VMs\rac-poc"</span><span class="p">;</span> <span class="nv">$Iso</span> <span class="p">=</span> <span class="s2">"D:\ISO images\OracleLinux-R9-U8-x86_64-dvd-20260618.iso"</span><span class="p">;</span> <span class="nv">$g</span> <span class="p">=</span> <span class="s2">"ol98-golden"</span>
+<span class="nb">New-Item</span> <span class="n">-ItemType</span> <span class="n">Directory</span> <span class="n">-Force</span> <span class="n">-Path</span> <span class="nv">$Base</span> <span class="p">|</span> <span class="nb">Out-Null</span>
+<span class="p">&amp;</span> <span class="nv">$VB</span> <span class="n">createvm</span> <span class="p">-</span><span class="n">-name</span> <span class="nv">$g</span> <span class="p">-</span><span class="n">-ostype</span> <span class="n">Oracle_64</span> <span class="p">-</span><span class="n">-basefolder</span> <span class="nv">$Base</span> <span class="p">-</span><span class="n">-register</span>
+<span class="p">&amp;</span> <span class="nv">$VB</span> <span class="n">modifyvm</span> <span class="nv">$g</span> <span class="p">-</span><span class="n">-cpus</span> <span class="n">2</span> <span class="p">-</span><span class="n">-memory</span> <span class="n">4096</span> <span class="p">-</span><span class="n">-vram</span> <span class="n">16</span> <span class="p">-</span><span class="n">-graphicscontroller</span> <span class="n">vmsvga</span> <span class="p">-</span><span class="n">-ioapic</span> <span class="n">on</span> <span class="p">-</span><span class="n">-paravirtprovider</span> <span class="n">kvm</span> <span class="p">-</span><span class="n">-rtcuseutc</span> <span class="n">on</span> <span class="p">-</span><span class="n">-boot1</span> <span class="n">dvd</span> <span class="p">-</span><span class="n">-boot2</span> <span class="n">disk</span> <span class="p">-</span><span class="n">-boot3</span> <span class="n">none</span> <span class="p">-</span><span class="n">-boot4</span> <span class="n">none</span>
+<span class="p">&amp;</span> <span class="nv">$VB</span> <span class="n">modifyvm</span> <span class="nv">$g</span> <span class="p">-</span><span class="n">-nic1</span> <span class="n">natnetwork</span> <span class="p">-</span><span class="n">-nat-network1</span> <span class="n">k8s-public</span>
+<span class="p">&amp;</span> <span class="nv">$VB</span> <span class="n">modifyvm</span> <span class="nv">$g</span> <span class="p">-</span><span class="n">-nic2</span> <span class="n">intnet</span> <span class="p">-</span><span class="n">-intnet2</span> <span class="n">rac-priv1</span> <span class="p">-</span><span class="n">-nicpromisc2</span> <span class="n">allow-all</span>
+<span class="p">&amp;</span> <span class="nv">$VB</span> <span class="n">modifyvm</span> <span class="nv">$g</span> <span class="p">-</span><span class="n">-nic3</span> <span class="n">intnet</span> <span class="p">-</span><span class="n">-intnet3</span> <span class="n">rac-priv2</span> <span class="p">-</span><span class="n">-nicpromisc3</span> <span class="n">allow-all</span>
+<span class="p">&amp;</span> <span class="nv">$VB</span> <span class="n">storagectl</span> <span class="nv">$g</span> <span class="p">-</span><span class="n">-name</span> <span class="n">SATA</span> <span class="p">-</span><span class="n">-add</span> <span class="n">sata</span> <span class="p">-</span><span class="n">-controller</span> <span class="n">IntelAhci</span> <span class="p">-</span><span class="n">-portcount</span> <span class="n">6</span> <span class="p">-</span><span class="n">-hostiocache</span> <span class="n">off</span>
+<span class="p">&amp;</span> <span class="nv">$VB</span> <span class="n">createmedium</span> <span class="n">disk</span> <span class="p">-</span><span class="n">-filename</span> <span class="s2">"$Base\$g\$g-os.vdi"</span> <span class="p">-</span><span class="n">-size</span> <span class="n">51200</span> <span class="p">-</span><span class="n">-variant</span> <span class="n">Standard</span>
+<span class="p">&amp;</span> <span class="nv">$VB</span> <span class="n">storageattach</span> <span class="nv">$g</span> <span class="p">-</span><span class="n">-storagectl</span> <span class="n">SATA</span> <span class="p">-</span><span class="n">-port</span> <span class="n">0</span> <span class="p">-</span><span class="n">-device</span> <span class="n">0</span> <span class="p">-</span><span class="n">-type</span> <span class="n">hdd</span> <span class="p">-</span><span class="n">-medium</span> <span class="s2">"$Base\$g\$g-os.vdi"</span>
+<span class="p">&amp;</span> <span class="nv">$VB</span> <span class="n">storageattach</span> <span class="nv">$g</span> <span class="p">-</span><span class="n">-storagectl</span> <span class="n">SATA</span> <span class="p">-</span><span class="n">-port</span> <span class="n">5</span> <span class="p">-</span><span class="n">-device</span> <span class="n">0</span> <span class="p">-</span><span class="n">-type</span> <span class="n">dvddrive</span> <span class="p">-</span><span class="n">-medium</span> <span class="nv">$Iso</span>
+</code></pre></div>
+<h3 id="22-kickstart-and-unattended-install">2.2 Kickstart and unattended install</h3>
+<p><strong>What:</strong> a kickstart file answers every installer question, and <code>VBoxManage unattended install</code> boots the ISO with it.</p>
+<p><strong>Why these kickstart choices:</strong></p>
+<ul>
+<li><strong>Static IP 10.0.1.5:</strong> the temporary address of the golden VM. Each clone starts on it and moves to its own address in Phase 4 of the learning guide.</li>
+<li><strong>Your SSH key for root:</strong> passwordless access from the start.</li>
+<li><strong>SELinux enforcing, firewall off:</strong> the Oracle doc runs SELinux enforcing, with its own policy module for the RAC pods. The firewall is off to keep the lab simple (in production you would open the Kubernetes and Oracle ports instead).</li>
+<li><strong>One logical volume for <code>/</code>, no swap partition:</strong> Kubernetes requires swap off.</li>
+</ul>
+<p>The password is typed at a prompt and only exists in a temporary file that is deleted straight after.</p>
+<div class="cmd"><div class="cmd-head"><span class="where win">PowerShell</span><span class="where-note"></span></div><button class="copy" type="button" aria-label="Copy commands">Copy</button><pre><code><span class="nv">$VB</span> <span class="p">=</span> <span class="s2">"C:\Program Files\Oracle\VirtualBox\VBoxManage.exe"</span><span class="p">;</span> <span class="nv">$Iso</span> <span class="p">=</span> <span class="s2">"D:\ISO images\OracleLinux-R9-U8-x86_64-dvd-20260618.iso"</span><span class="p">;</span> <span class="nv">$g</span> <span class="p">=</span> <span class="s2">"ol98-golden"</span>
+<span class="nv">$sec</span> <span class="p">=</span> <span class="nb">Read-Host</span> <span class="s2">"Root password for the lab VMs (8+ chars, no spaces or double quotes)"</span> <span class="n">-AsSecureString</span>
+<span class="nv">$pw</span>  <span class="p">=</span> <span class="no">[Runtime.InteropServices.Marshal]</span><span class="p">::</span><span class="n">PtrToStringAuto</span><span class="p">(</span><span class="no">[Runtime.InteropServices.Marshal]</span><span class="p">::</span><span class="n">SecureStringToBSTR</span><span class="p">(</span><span class="nv">$sec</span><span class="p">))</span>
+<span class="nv">$pub</span> <span class="p">=</span> <span class="p">(</span><span class="nb">Get-Content</span> <span class="s2">"$env:USERPROFILE\.ssh\id_ed25519.pub"</span> <span class="n">-Raw</span><span class="p">).</span><span class="n">Trim</span><span class="p">()</span>
+<span class="nv">$ks</span> <span class="p">=</span> <span class="sh">@"</span>
+<span class="sh">text</span>
+<span class="sh">cdrom</span>
+<span class="sh">lang en_US.UTF-8</span>
+<span class="sh">keyboard us</span>
+<span class="sh">timezone America/New_York --utc</span>
+<span class="sh">network --device=enp0s3 --bootproto=static --ip=10.0.1.5 --netmask=255.255.255.0 --gateway=10.0.1.1 --nameserver=8.8.8.8 --noipv6 --onboot=yes --activate</span>
+<span class="sh">network --hostname=ol98-golden</span>
+<span class="sh">rootpw --plaintext "$pw" --allow-ssh</span>
+<span class="sh">sshkey --username=root "$pub"</span>
+<span class="sh">selinux --enforcing</span>
+<span class="sh">firewall --disabled</span>
+<span class="sh">firstboot --disabled</span>
+<span class="sh">skipx</span>
+<span class="sh">ignoredisk --only-use=sda</span>
+<span class="sh">zerombr</span>
+<span class="sh">clearpart --all --initlabel --drives=sda</span>
+<span class="sh">reqpart --add-boot</span>
+<span class="sh">part pv.01 --size=1 --grow --ondisk=sda</span>
+<span class="sh">volgroup ol pv.01</span>
+<span class="sh">logvol / --vgname=ol --name=root --fstype=xfs --size=1 --grow</span>
+<span class="sh">reboot --eject</span>
+
+<span class="sh">%packages</span>
+<span class="sh">@^minimal-environment</span>
+<span class="sh">chrony</span>
+<span class="sh">tar</span>
+<span class="sh">rsync</span>
+<span class="sh">%end</span>
+<span class="sh">"@</span>
+<span class="nv">$ksFile</span> <span class="p">=</span> <span class="s2">"$env:TEMP\ol98-golden-ks.cfg"</span>
+<span class="no">[IO.File]</span><span class="p">::</span><span class="n">WriteAllText</span><span class="p">(</span><span class="nv">$ksFile</span><span class="p">,</span> <span class="nv">$ks</span><span class="p">.</span><span class="n">Replace</span><span class="p">(</span><span class="s2">"</span><span class="se">`r`n</span><span class="s2">"</span><span class="p">,</span> <span class="s2">"</span><span class="se">`n</span><span class="s2">"</span><span class="p">),</span> <span class="p">(</span><span class="nb">New-Object</span> <span class="n">Text</span><span class="p">.</span><span class="n">UTF8Encoding</span> <span class="nv">$false</span><span class="p">))</span>
+<span class="p">&amp;</span> <span class="nv">$VB</span> <span class="n">unattended</span> <span class="n">install</span> <span class="nv">$g</span> <span class="s2">"--iso=$Iso"</span> <span class="s2">"--script-template=$ksFile"</span> <span class="p">-</span><span class="n">-hostname</span><span class="p">=</span><span class="n">ol98-golden</span><span class="p">.</span><span class="n">localdomain</span> <span class="p">-</span><span class="n">-user</span><span class="p">=</span><span class="n">rac</span> <span class="s2">"--password=$pw"</span> <span class="p">-</span><span class="n">-time-zone</span><span class="p">=</span><span class="n">America</span><span class="p">/</span><span class="n">New_York</span> <span class="p">-</span><span class="n">-locale</span><span class="p">=</span><span class="n">en_US</span> <span class="p">-</span><span class="n">-country</span><span class="p">=</span><span class="n">US</span> <span class="p">-</span><span class="n">-start-vm</span><span class="p">=</span><span class="n">headless</span>
+<span class="nb">Remove-Item</span> <span class="nv">$ksFile</span><span class="p">;</span> <span class="nv">$pw</span> <span class="p">=</span> <span class="nv">$null</span>
+</code></pre></div>
+<p>The install takes 10 to 20 minutes. To watch it, open VirtualBox Manager, select <code>ol98-golden</code> and click <strong>Show</strong>.</p>
+<p><strong>Check</strong> (when SSH answers; until then you get "connection refused" or a timeout):</p>
+<div class="cmd"><div class="cmd-head"><span class="where win">PowerShell</span><span class="where-note"></span></div><button class="copy" type="button" aria-label="Copy commands">Copy</button><pre><code><span class="n">ssh</span> <span class="n">-p</span> <span class="n">2205</span> <span class="n">root</span><span class="nv">@127</span><span class="p">.</span><span class="n">0</span><span class="p">.</span><span class="n">0</span><span class="p">.</span><span class="n">1</span> <span class="s2">"cat /etc/oracle-release; uname -r; ip -4 -br addr show enp0s3; swapon --show | wc -l; getenforce"</span>
+</code></pre></div>
+<p>You should see <code>Oracle Linux Server release 9.8</code>, <code>enp0s3 ... 10.0.1.5/24</code>, <code>0</code> swap devices and <code>Enforcing</code>. The kernel is still the installer's default here; Step 3 pins UEK R7.</p>
+</section>
+<section class="sec"><h2 id="step-3-os-prep-for-kubernetes-and-rac"><span class="eyebrow">Step 3</span>OS prep for Kubernetes and RAC</h2>
+<p><strong>Result of this step:</strong> the golden VM has everything all three nodes share: the UEK R7 kernel, the kernel settings Oracle and Kubernetes need, the SELinux policy for RAC pods, and CRI-O with kubeadm, kubelet and kubectl. Run every block in a root shell on the golden VM:</p>
+<div class="cmd"><div class="cmd-head"><span class="where win">PowerShell</span><span class="where-note"></span></div><button class="copy" type="button" aria-label="Copy commands">Copy</button><pre><code><span class="n">ssh</span> <span class="n">-p</span> <span class="n">2205</span> <span class="n">root</span><span class="nv">@127</span><span class="p">.</span><span class="n">0</span><span class="p">.</span><span class="n">0</span><span class="p">.</span><span class="n">1</span>
+</code></pre></div>
+<h3 id="31-update-the-os-and-pin-the-uek-r7-kernel">3.1 Update the OS and pin the UEK R7 kernel</h3>
+<p><strong>Why:</strong> the Oracle doc is tested on UEK R7 (5.15.0-208 or later). Oracle Linux 9.8 may default to UEK 8, so the newest UEK R7 kernel is installed and made the default. Running a kernel the doc wasn't tested on is a variable a PoC doesn't need.</p>
+<div class="cmd"><div class="cmd-head"><span class="where node">golden VM</span><span class="where-note"></span></div><div class="connect"><span class="connect-lbl">Connect first</span><span class="conn-cmd"><code>ssh -p 2205 root@127.0.0.1</code><button class="copy-mini" type="button" data-copy="ssh -p 2205 root@127.0.0.1" aria-label="Copy ssh -p 2205 root@127.0.0.1">Copy</button></span></div><button class="copy" type="button" aria-label="Copy commands">Copy</button><pre><code>dnf<span class="w"> </span>-y<span class="w"> </span>install<span class="w"> </span>dnf-plugins-core
+dnf<span class="w"> </span>-y<span class="w"> </span>update
+dnf<span class="w"> </span>config-manager<span class="w"> </span>--set-enabled<span class="w"> </span>ol9_UEKR7
+dnf<span class="w"> </span>config-manager<span class="w"> </span>--set-disabled<span class="w"> </span>ol9_UEKR8<span class="w"> </span><span class="m">2</span>&gt;/dev/null<span class="w"> </span><span class="o">||</span><span class="w"> </span><span class="nb">true</span>
+<span class="nv">UEK7</span><span class="o">=</span><span class="k">$(</span>dnf<span class="w"> </span>-q<span class="w"> </span>--disablerepo<span class="o">=</span><span class="s1">'*'</span><span class="w"> </span>--enablerepo<span class="o">=</span>ol9_UEKR7<span class="w"> </span>repoquery<span class="w"> </span>--latest-limit<span class="w"> </span><span class="m">1</span><span class="w"> </span>--qf<span class="w"> </span><span class="s1">'%{version}-%{release}'</span><span class="w"> </span>kernel-uek<span class="w"> </span><span class="p">|</span><span class="w"> </span>tail<span class="w"> </span>-1<span class="k">)</span>
+<span class="nb">echo</span><span class="w"> </span><span class="s2">"UEK R7: </span><span class="nv">$UEK7</span><span class="s2">"</span>
+dnf<span class="w"> </span>-y<span class="w"> </span>install<span class="w"> </span><span class="s2">"kernel-uek-</span><span class="si">${</span><span class="nv">UEK7</span><span class="si">}</span><span class="s2">"</span>
+grubby<span class="w"> </span>--set-default<span class="w"> </span><span class="s2">"/boot/vmlinuz-</span><span class="si">${</span><span class="nv">UEK7</span><span class="si">}</span><span class="s2">.x86_64"</span>
+</code></pre></div>
+<h3 id="32-kernel-arguments">3.2 Kernel arguments</h3>
+<p><strong>Why:</strong></p>
+<ul>
+<li><strong><code>transparent_hugepage=madvise</code>:</strong> Oracle recommends against THP <code>always</code>, which causes memory-access delays and, in RAC, node evictions. The doc asks for <code>madvise</code> on UEK R7.</li>
+<li><strong><code>clocksource=tsc</code>:</strong> a stable clock in a VM. Grid's cluster time and its heartbeat timing are sensitive to clock jumps.</li>
+</ul>
+<div class="cmd"><div class="cmd-head"><span class="where node">golden VM</span><span class="where-note"></span></div><div class="connect"><span class="connect-lbl">Connect first</span><span class="conn-cmd"><code>ssh -p 2205 root@127.0.0.1</code><button class="copy-mini" type="button" data-copy="ssh -p 2205 root@127.0.0.1" aria-label="Copy ssh -p 2205 root@127.0.0.1">Copy</button></span></div><button class="copy" type="button" aria-label="Copy commands">Copy</button><pre><code>grubby<span class="w"> </span>--update-kernel<span class="o">=</span>ALL<span class="w"> </span>--args<span class="o">=</span><span class="s2">"transparent_hugepage=madvise clocksource=tsc"</span>
+</code></pre></div>
+<h3 id="33-swap-off">3.3 Swap off</h3>
+<p><strong>Why:</strong> the kubelet refuses to run with swap on by default. Memory limits on pods only mean something when nothing is swapped out.</p>
+<div class="cmd"><div class="cmd-head"><span class="where node">golden VM</span><span class="where-note"></span></div><div class="connect"><span class="connect-lbl">Connect first</span><span class="conn-cmd"><code>ssh -p 2205 root@127.0.0.1</code><button class="copy-mini" type="button" data-copy="ssh -p 2205 root@127.0.0.1" aria-label="Copy ssh -p 2205 root@127.0.0.1">Copy</button></span></div><button class="copy" type="button" aria-label="Copy commands">Copy</button><pre><code>swapoff<span class="w"> </span>-a
+sed<span class="w"> </span>-ri<span class="w"> </span><span class="s1">'/\sswap\s/ s/^([^#])/#\1/'</span><span class="w"> </span>/etc/fstab
+</code></pre></div>
+<h3 id="34-kernel-modules-and-sysctls">3.4 Kernel modules and sysctls</h3>
+<p><strong>Why:</strong></p>
+<ul>
+<li><strong><code>overlay</code> and <code>br_netfilter</code>, plus the three <code>net.*</code> settings:</strong> container image layers, and traffic between pods passing through iptables. Kubernetes networking needs them.</li>
+<li><strong>The Oracle settings:</strong> the doc's values for the worker hosts (<code>fs.file-max</code>, socket buffers, <code>fs.aio-max-nr</code>). These are host-wide settings that pods can't set themselves. The settings pods <em>can</em> set for themselves (<code>kernel.shm*</code>, <code>kernel.sem</code>) come later, in the pod definitions.</li>
+</ul>
+<div class="cmd"><div class="cmd-head"><span class="where node">golden VM</span><span class="where-note"></span></div><div class="connect"><span class="connect-lbl">Connect first</span><span class="conn-cmd"><code>ssh -p 2205 root@127.0.0.1</code><button class="copy-mini" type="button" data-copy="ssh -p 2205 root@127.0.0.1" aria-label="Copy ssh -p 2205 root@127.0.0.1">Copy</button></span></div><button class="copy" type="button" aria-label="Copy commands">Copy</button><pre><code>cat<span class="w"> </span>&gt;/etc/modules-load.d/k8s.conf<span class="w"> </span><span class="s">&lt;&lt;'EOF'</span>
+<span class="s">overlay</span>
+<span class="s">br_netfilter</span>
+<span class="s">EOF</span>
+modprobe<span class="w"> </span>overlay<span class="p">;</span><span class="w"> </span>modprobe<span class="w"> </span>br_netfilter
+cat<span class="w"> </span>&gt;/etc/sysctl.d/90-k8s.conf<span class="w"> </span><span class="s">&lt;&lt;'EOF'</span>
+<span class="s">net.bridge.bridge-nf-call-iptables  = 1</span>
+<span class="s">net.bridge.bridge-nf-call-ip6tables = 1</span>
+<span class="s">net.ipv4.ip_forward                 = 1</span>
+<span class="s">EOF</span>
+cat<span class="w"> </span>&gt;/etc/sysctl.d/91-oracle-rac.conf<span class="w"> </span><span class="s">&lt;&lt;'EOF'</span>
+<span class="s">fs.file-max = 6815744</span>
+<span class="s">net.core.rmem_default = 262144</span>
+<span class="s">net.core.rmem_max = 4194304</span>
+<span class="s">net.core.wmem_default = 262144</span>
+<span class="s">net.core.wmem_max = 1048576</span>
+<span class="s">fs.aio-max-nr = 1048576</span>
+<span class="s">EOF</span>
+sysctl<span class="w"> </span>--system<span class="w"> </span>&gt;/dev/null
+</code></pre></div>
+<h3 id="35-time-sync-and-firewall">3.5 Time sync and firewall</h3>
+<p><strong>Why:</strong> all nodes must agree on the time. Grid checks it, and Kubernetes certificates and leases depend on it. The firewall is off for the lab only.</p>
+<div class="cmd"><div class="cmd-head"><span class="where node">golden VM</span><span class="where-note"></span></div><div class="connect"><span class="connect-lbl">Connect first</span><span class="conn-cmd"><code>ssh -p 2205 root@127.0.0.1</code><button class="copy-mini" type="button" data-copy="ssh -p 2205 root@127.0.0.1" aria-label="Copy ssh -p 2205 root@127.0.0.1">Copy</button></span></div><button class="copy" type="button" aria-label="Copy commands">Copy</button><pre><code>dnf<span class="w"> </span>-y<span class="w"> </span>install<span class="w"> </span>chrony
+systemctl<span class="w"> </span><span class="nb">enable</span><span class="w"> </span>--now<span class="w"> </span>chronyd
+systemctl<span class="w"> </span>disable<span class="w"> </span>--now<span class="w"> </span>firewalld<span class="w"> </span><span class="m">2</span>&gt;/dev/null<span class="w"> </span><span class="o">||</span><span class="w"> </span><span class="nb">true</span>
+</code></pre></div>
+<h3 id="36-tools-and-the-rac-selinux-policy">3.6 Tools and the RAC SELinux policy</h3>
+<p><strong>Why:</strong></p>
+<ul>
+<li><strong>Tools:</strong> <code>podman</code> builds the RAC image; <code>unzip</code> unpacks the Oracle software. It was missing in the first build, and the Grid unzip step failed until it was installed.</li>
+<li><strong>The <code>rac-ocne</code> policy module:</strong> RAC pods run systemd as PID 1 in the SELinux domain <code>container_init_t</code>. Oracle binaries on <code>/u01</code> need to map and execute files, use text relocations and read the kernel log, which the default container policy forbids. This module is the doc's "Set up SELinux Module on Worker Nodes".</li>
+<li><strong><code>container_manage_cgroup</code>:</strong> systemd inside a pod must manage its own cgroups. Without this boolean, the RAC container exited about one second after starting, with no log output. OCNE sets it through its own SELinux package; on kubeadm you set it yourself.</li>
+</ul>
+<div class="cmd"><div class="cmd-head"><span class="where node">golden VM</span><span class="where-note"></span></div><div class="connect"><span class="connect-lbl">Connect first</span><span class="conn-cmd"><code>ssh -p 2205 root@127.0.0.1</code><button class="copy-mini" type="button" data-copy="ssh -p 2205 root@127.0.0.1" aria-label="Copy ssh -p 2205 root@127.0.0.1">Copy</button></span></div><button class="copy" type="button" aria-label="Copy commands">Copy</button><pre><code>dnf<span class="w"> </span>-y<span class="w"> </span>install<span class="w"> </span>container-selinux<span class="w"> </span>selinux-policy-devel<span class="w"> </span>policycoreutils-python-utils<span class="w"> </span>podman<span class="w"> </span>tar<span class="w"> </span>rsync<span class="w"> </span>unzip<span class="w"> </span>jq<span class="w"> </span>iproute-tc<span class="w"> </span>bash-completion<span class="w"> </span>lsof
+mkdir<span class="w"> </span>-p<span class="w"> </span>/var/opt<span class="w"> </span><span class="o">&amp;&amp;</span><span class="w"> </span><span class="nb">cd</span><span class="w"> </span>/var/opt
+cat<span class="w"> </span>&gt;rac-ocne.te<span class="w"> </span><span class="s">&lt;&lt;'EOF'</span>
+<span class="s">module rac-ocne 1.0;</span>
+
+<span class="s">require {</span>
+<span class="s">        type container_init_t;</span>
+<span class="s">        type container_runtime_t;</span>
+<span class="s">        type container_file_t;</span>
+<span class="s">        type kernel_t;</span>
+<span class="s">        type bin_t;</span>
+<span class="s">        type lib_t;</span>
+<span class="s">        type textrel_shlib_t;</span>
+<span class="s">        class file { getattr map execute execmod setattr };</span>
+<span class="s">        class system syslog_read;</span>
+<span class="s">}</span>
+
+<span class="s">allow container_init_t container_runtime_t:file getattr;</span>
+<span class="s">allow container_init_t bin_t:file { map execute };</span>
+<span class="s">allow container_init_t container_file_t:file execmod;</span>
+<span class="s">allow container_init_t lib_t:file execmod;</span>
+<span class="s">allow container_init_t textrel_shlib_t:file setattr;</span>
+<span class="s">allow container_init_t kernel_t:system syslog_read;</span>
+<span class="s">EOF</span>
+make<span class="w"> </span>-f<span class="w"> </span>/usr/share/selinux/devel/Makefile<span class="w"> </span>rac-ocne.pp<span class="w"> </span><span class="o">&amp;&amp;</span><span class="w"> </span>semodule<span class="w"> </span>-i<span class="w"> </span>rac-ocne.pp
+setsebool<span class="w"> </span>-P<span class="w"> </span>container_manage_cgroup<span class="w"> </span>on
+<span class="nb">cd</span><span class="w"> </span>~
+</code></pre></div>
+<p><strong>Check:</strong> <code>semodule -l | grep rac-ocne</code> prints <code>rac-ocne</code>, and <code>getsebool container_manage_cgroup</code> prints <code>on</code>.</p>
+<h3 id="37-kubernetes-and-cri-o-packages">3.7 Kubernetes and CRI-O packages</h3>
+<p><strong>What:</strong> the Kubernetes v1.36 and CRI-O v1.36 repositories, then <code>cri-o</code>, <code>kubelet</code>, <code>kubeadm</code>, <code>kubectl</code> and <code>cri-tools</code>.</p>
+<p><strong>Why CRI-O:</strong> the doc builds the RAC image with podman and runs it as <code>localhost/oracle/database-rac</code>. CRI-O shares podman's image store, so a podman-built image is immediately visible to Kubernetes with no registry. With containerd you would have to import it separately. <code>cri-tools</code> gives <code>crictl</code>, which was also missing at first.</p>
+<div class="cmd"><div class="cmd-head"><span class="where node">golden VM</span><span class="where-note"></span></div><div class="connect"><span class="connect-lbl">Connect first</span><span class="conn-cmd"><code>ssh -p 2205 root@127.0.0.1</code><button class="copy-mini" type="button" data-copy="ssh -p 2205 root@127.0.0.1" aria-label="Copy ssh -p 2205 root@127.0.0.1">Copy</button></span></div><button class="copy" type="button" aria-label="Copy commands">Copy</button><pre><code>cat<span class="w"> </span>&gt;/etc/yum.repos.d/kubernetes.repo<span class="w"> </span><span class="s">&lt;&lt;'EOF'</span>
+<span class="s">[kubernetes]</span>
+<span class="s">name=Kubernetes</span>
+<span class="s">baseurl=https://pkgs.k8s.io/core:/stable:/v1.36/rpm/</span>
+<span class="s">enabled=1</span>
+<span class="s">gpgcheck=1</span>
+<span class="s">gpgkey=https://pkgs.k8s.io/core:/stable:/v1.36/rpm/repodata/repomd.xml.key</span>
+<span class="s">exclude=kubelet kubeadm kubectl cri-tools kubernetes-cni</span>
+<span class="s">EOF</span>
+cat<span class="w"> </span>&gt;/etc/yum.repos.d/cri-o.repo<span class="w"> </span><span class="s">&lt;&lt;'EOF'</span>
+<span class="s">[cri-o]</span>
+<span class="s">name=CRI-O</span>
+<span class="s">baseurl=https://download.opensuse.org/repositories/isv:/cri-o:/stable:/v1.36/rpm/</span>
+<span class="s">enabled=1</span>
+<span class="s">gpgcheck=1</span>
+<span class="s">gpgkey=https://download.opensuse.org/repositories/isv:/cri-o:/stable:/v1.36/rpm/repodata/repomd.xml.key</span>
+<span class="s">EOF</span>
+dnf<span class="w"> </span>-y<span class="w"> </span>install<span class="w"> </span>cri-o<span class="w"> </span>kubelet<span class="w"> </span>kubeadm<span class="w"> </span>kubectl<span class="w"> </span>cri-tools<span class="w"> </span>--disableexcludes<span class="o">=</span>kubernetes
+<span class="nb">echo</span><span class="w"> </span><span class="s2">"runtime-endpoint: unix:///var/run/crio/crio.sock"</span><span class="w"> </span>&gt;/etc/crictl.yaml
+</code></pre></div>
+<p>The <code>exclude=</code> line stops a routine <code>dnf update</code> from upgrading Kubernetes by accident. Kubernetes is upgraded deliberately, one minor version at a time.</p>
+<h3 id="38-configure-cri-o-and-pull-the-images">3.8 Configure CRI-O and pull the images</h3>
+<p><strong>Why:</strong></p>
+<ul>
+<li><strong><code>selinux = true</code>:</strong> containers get SELinux labels, which the <code>rac-ocne</code> module is written for.</li>
+<li><strong>The pause image:</strong> set to the exact image kubeadm expects. Otherwise kubeadm warns about a mismatch, and two pause images get pulled.</li>
+<li><strong>No CRI-O sample bridge network:</strong> Flannel and Multus provide the pod networks.</li>
+<li><strong>Images pulled now:</strong> each clone then starts with the control-plane images already in place.</li>
+</ul>
+<div class="cmd"><div class="cmd-head"><span class="where node">golden VM</span><span class="where-note"></span></div><div class="connect"><span class="connect-lbl">Connect first</span><span class="conn-cmd"><code>ssh -p 2205 root@127.0.0.1</code><button class="copy-mini" type="button" data-copy="ssh -p 2205 root@127.0.0.1" aria-label="Copy ssh -p 2205 root@127.0.0.1">Copy</button></span></div><button class="copy" type="button" aria-label="Copy commands">Copy</button><pre><code>mkdir<span class="w"> </span>-p<span class="w"> </span>/etc/crio/crio.conf.d
+<span class="nb">printf</span><span class="w"> </span><span class="s1">'[crio.runtime]\nselinux = true\n'</span><span class="w"> </span>&gt;/etc/crio/crio.conf.d/90-rac-poc.conf
+<span class="nv">PAUSE_IMG</span><span class="o">=</span><span class="k">$(</span>kubeadm<span class="w"> </span>config<span class="w"> </span>images<span class="w"> </span>list<span class="w"> </span><span class="m">2</span>&gt;/dev/null<span class="w"> </span><span class="p">|</span><span class="w"> </span>grep<span class="w"> </span><span class="s1">'/pause:'</span><span class="w"> </span><span class="p">|</span><span class="w"> </span>head<span class="w"> </span>-1<span class="k">)</span>
+<span class="nb">printf</span><span class="w"> </span><span class="s1">'[crio.image]\npause_image = "%s"\n'</span><span class="w"> </span><span class="s2">"</span><span class="nv">$PAUSE_IMG</span><span class="s2">"</span><span class="w"> </span>&gt;/etc/crio/crio.conf.d/91-pause.conf
+rm<span class="w"> </span>-f<span class="w"> </span>/etc/cni/net.d/*crio*bridge*<span class="w"> </span><span class="m">2</span>&gt;/dev/null<span class="w"> </span><span class="o">||</span><span class="w"> </span><span class="nb">true</span>
+systemctl<span class="w"> </span><span class="nb">enable</span><span class="w"> </span>--now<span class="w"> </span>crio
+systemctl<span class="w"> </span><span class="nb">enable</span><span class="w"> </span>kubelet
+kubeadm<span class="w"> </span>config<span class="w"> </span>images<span class="w"> </span>pull<span class="w"> </span>--cri-socket<span class="w"> </span>unix:///var/run/crio/crio.sock
+</code></pre></div>
+<p>The kubelet is enabled but won't start properly until <code>kubeadm init</code> or <code>join</code> gives it a configuration. That's expected.</p>
+<h3 id="39-host-names-and-shell-completion">3.9 Host names and shell completion</h3>
+<p><strong>Why:</strong> every node can resolve the others by name before DNS exists. Completion saves typing.</p>
+<div class="cmd"><div class="cmd-head"><span class="where node">golden VM</span><span class="where-note"></span></div><div class="connect"><span class="connect-lbl">Connect first</span><span class="conn-cmd"><code>ssh -p 2205 root@127.0.0.1</code><button class="copy-mini" type="button" data-copy="ssh -p 2205 root@127.0.0.1" aria-label="Copy ssh -p 2205 root@127.0.0.1">Copy</button></span></div><button class="copy" type="button" aria-label="Copy commands">Copy</button><pre><code>cat<span class="w"> </span>&gt;&gt;/etc/hosts<span class="w"> </span><span class="s">&lt;&lt;'EOF'</span>
+<span class="s">10.0.1.10  controlplane</span>
+<span class="s">10.0.1.11  worker1</span>
+<span class="s">10.0.1.12  worker2</span>
+<span class="s">EOF</span>
+kubectl<span class="w"> </span>completion<span class="w"> </span>bash<span class="w"> </span>&gt;/etc/bash_completion.d/kubectl
+crictl<span class="w"> </span>completion<span class="w"> </span>bash<span class="w"> </span>&gt;/etc/bash_completion.d/crictl
+</code></pre></div>
+</section>
+<section class="sec"><h2 id="step-4-verify-the-golden-image"><span class="eyebrow">Step 4</span>Verify the golden image</h2>
+<p><strong>Result of this step:</strong> proof that the golden image has everything in "What the golden image contains", before you seal it.</p>
+<h3 id="41-reboot">4.1 Reboot</h3>
+<p><strong>Why:</strong> the new kernel and kernel arguments only take effect after a reboot.</p>
+<div class="cmd"><div class="cmd-head"><span class="where node">golden VM</span><span class="where-note"></span></div><div class="connect"><span class="connect-lbl">Connect first</span><span class="conn-cmd"><code>ssh -p 2205 root@127.0.0.1</code><button class="copy-mini" type="button" data-copy="ssh -p 2205 root@127.0.0.1" aria-label="Copy ssh -p 2205 root@127.0.0.1">Copy</button></span></div><button class="copy" type="button" aria-label="Copy commands">Copy</button><pre><code>systemctl<span class="w"> </span>reboot
+</code></pre></div>
+<p>Reconnect after a minute with <code>ssh -p 2205 root@127.0.0.1</code>.</p>
+<h3 id="42-run-the-check">4.2 Run the check</h3>
+<p><strong>What:</strong> one check per item in the golden image. Each line prints <code>OK</code>, or <code>FIX</code> with the step to run again. It only reads; it changes nothing. The same block is used in "Check and fix an existing golden image".</p>
+<div class="cmd"><div class="cmd-head"><span class="where node">golden VM</span><span class="where-note"></span></div><div class="connect"><span class="connect-lbl">Connect first</span><span class="conn-cmd"><code>ssh -p 2205 root@127.0.0.1</code><button class="copy-mini" type="button" data-copy="ssh -p 2205 root@127.0.0.1" aria-label="Copy ssh -p 2205 root@127.0.0.1">Copy</button></span></div><button class="copy" type="button" aria-label="Copy commands">Copy</button><pre><code>c<span class="o">()</span><span class="w"> </span><span class="o">{</span><span class="w"> </span><span class="k">if</span><span class="w"> </span><span class="nb">eval</span><span class="w"> </span><span class="s2">"</span><span class="nv">$2</span><span class="s2">"</span><span class="w"> </span>&gt;/dev/null<span class="w"> </span><span class="m">2</span>&gt;<span class="p">&amp;</span><span class="m">1</span><span class="p">;</span><span class="w"> </span><span class="k">then</span><span class="w"> </span><span class="nb">echo</span><span class="w"> </span><span class="s2">"OK    </span><span class="nv">$1</span><span class="s2">"</span><span class="p">;</span><span class="w"> </span><span class="k">else</span><span class="w"> </span><span class="nb">echo</span><span class="w"> </span><span class="s2">"FIX   </span><span class="nv">$1</span><span class="s2">   -&gt; rerun step </span><span class="nv">$3</span><span class="s2">"</span><span class="p">;</span><span class="w"> </span><span class="k">fi</span><span class="p">;</span><span class="w"> </span><span class="o">}</span>
+c<span class="w"> </span><span class="s2">"UEK R7 kernel is the default"</span><span class="w">        </span><span class="s1">'[[ $(grubby --default-kernel) == *5.15.0*uek* ]]'</span><span class="w">                 </span><span class="m">3</span>.1
+c<span class="w"> </span><span class="s2">"THP madvise + clocksource=tsc args"</span><span class="w">  </span><span class="s1">'grubby --info=DEFAULT | grep -q "transparent_hugepage=madvise.*clocksource=tsc\|clocksource=tsc.*transparent_hugepage=madvise"'</span><span class="w"> </span><span class="m">3</span>.2
+c<span class="w"> </span><span class="s2">"swap off in fstab"</span><span class="w">                   </span><span class="s1">'! grep -Eq "^[^#].*\sswap\s" /etc/fstab'</span><span class="w">                          </span><span class="m">3</span>.3
+c<span class="w"> </span><span class="s2">"overlay/br_netfilter at boot"</span><span class="w">        </span><span class="s1">'grep -q br_netfilter /etc/modules-load.d/k8s.conf'</span><span class="w">                </span><span class="m">3</span>.4
+c<span class="w"> </span><span class="s2">"k8s sysctls"</span><span class="w">                         </span><span class="s1">'grep -q ip_forward /etc/sysctl.d/90-k8s.conf'</span><span class="w">                     </span><span class="m">3</span>.4
+c<span class="w"> </span><span class="s2">"Oracle sysctls"</span><span class="w">                      </span><span class="s1">'grep -q aio-max-nr /etc/sysctl.d/91-oracle-rac.conf'</span><span class="w">              </span><span class="m">3</span>.4
+c<span class="w"> </span><span class="s2">"chronyd enabled"</span><span class="w">                     </span><span class="s1">'systemctl is-enabled chronyd'</span><span class="w">                                     </span><span class="m">3</span>.5
+c<span class="w"> </span><span class="s2">"firewalld not enabled"</span><span class="w">               </span><span class="s1">'! systemctl is-enabled firewalld'</span><span class="w">                                 </span><span class="m">3</span>.5
+c<span class="w"> </span><span class="s2">"tools (podman unzip jq tc lsof ...)"</span><span class="w"> </span><span class="s1">'rpm -q container-selinux selinux-policy-devel policycoreutils-python-utils podman tar rsync unzip jq iproute-tc bash-completion lsof'</span><span class="w"> </span><span class="m">3</span>.6
+c<span class="w"> </span><span class="s2">"SELinux module rac-ocne"</span><span class="w">             </span><span class="s1">'semodule -l | grep -qw rac-ocne'</span><span class="w">                                  </span><span class="m">3</span>.6
+c<span class="w"> </span><span class="s2">"container_manage_cgroup on"</span><span class="w">          </span><span class="s1">'getsebool container_manage_cgroup | grep -q "on$"'</span><span class="w">                </span><span class="m">3</span>.6
+c<span class="w"> </span><span class="s2">"k8s + CRI-O 1.36 packages"</span><span class="w">           </span><span class="s1">'rpm -q cri-o kubelet kubeadm kubectl cri-tools &amp;&amp; kubeadm version -o short | grep -q "^v1\.36\."'</span><span class="w"> </span><span class="m">3</span>.7
+c<span class="w"> </span><span class="s2">"kubernetes repo exclude= line"</span><span class="w">       </span><span class="s1">'grep -q "^exclude=kubelet" /etc/yum.repos.d/kubernetes.repo'</span><span class="w">      </span><span class="m">3</span>.7
+c<span class="w"> </span><span class="s2">"/etc/crictl.yaml"</span><span class="w">                    </span><span class="s1">'grep -q crio.sock /etc/crictl.yaml'</span><span class="w">                               </span><span class="m">3</span>.7
+c<span class="w"> </span><span class="s2">"CRI-O selinux = true"</span><span class="w">                </span><span class="s1">'grep -q "selinux = true" /etc/crio/crio.conf.d/90-rac-poc.conf'</span><span class="w">   </span><span class="m">3</span>.8
+c<span class="w"> </span><span class="s2">"CRI-O pause image = kubeadm's"</span><span class="w">       </span><span class="s1">'grep -q "$(kubeadm config images list 2&gt;/dev/null | grep /pause:)" /etc/crio/crio.conf.d/91-pause.conf'</span><span class="w"> </span><span class="m">3</span>.8
+c<span class="w"> </span><span class="s2">"crio + kubelet enabled"</span><span class="w">              </span><span class="s1">'systemctl is-enabled crio &amp;&amp; systemctl is-enabled kubelet'</span><span class="w">        </span><span class="m">3</span>.8
+c<span class="w"> </span><span class="s2">"control-plane images pulled"</span><span class="w">         </span><span class="s1">'[ $(crictl images -q | wc -l) -ge 7 ]'</span><span class="w">                            </span><span class="m">3</span>.8
+c<span class="w"> </span><span class="s2">"node names in /etc/hosts"</span><span class="w">            </span><span class="s1">'grep -q "10.0.1.12 *worker2" /etc/hosts'</span><span class="w">                          </span><span class="s2">"3.9 (append only if missing)"</span>
+c<span class="w"> </span><span class="s2">"kubectl/crictl completion"</span><span class="w">           </span><span class="s1">'[ -s /etc/bash_completion.d/kubectl ] &amp;&amp; [ -s /etc/bash_completion.d/crictl ]'</span><span class="w"> </span><span class="m">3</span>.9
+<span class="nb">echo</span><span class="w"> </span><span class="s2">"--- evidence ---"</span>
+uname<span class="w"> </span>-r<span class="p">;</span><span class="w"> </span>cat<span class="w"> </span>/sys/kernel/mm/transparent_hugepage/enabled<span class="p">;</span><span class="w"> </span>cat<span class="w"> </span>/sys/devices/system/clocksource/clocksource0/current_clocksource
+getenforce<span class="p">;</span><span class="w"> </span>swapon<span class="w"> </span>--show<span class="w"> </span><span class="p">|</span><span class="w"> </span>wc<span class="w"> </span>-l
+rpm<span class="w"> </span>-q<span class="w"> </span>cri-o<span class="w"> </span>kubelet<span class="w"> </span>kubeadm<span class="w"> </span>kubectl<span class="w"> </span>cri-tools<span class="w"> </span>unzip<span class="w"> </span>podman
+getsebool<span class="w"> </span>container_manage_cgroup
+cat<span class="w"> </span>/etc/crio/crio.conf.d/91-pause.conf
+systemctl<span class="w"> </span>is-active<span class="w"> </span>crio
+crictl<span class="w"> </span>images
+</code></pre></div>
+<p><strong>Check:</strong></p>
+<ul>
+<li>all 20 lines say <code>OK</code>;</li>
+<li>the kernel is <code>5.15.0-...el9uek</code>, THP shows <code>[madvise]</code>, the clock source is <code>tsc</code>;</li>
+<li>SELinux is <code>Enforcing</code> and the swap count is <code>0</code>;</li>
+<li>every package has a version (none "not installed"), all on 1.36;</li>
+<li><code>container_manage_cgroup --&gt; on</code>;</li>
+<li>the pause image in <code>91-pause.conf</code> also appears in <code>crictl images</code>, and <code>crio</code> is <code>active</code>;</li>
+<li><code>crictl images</code> lists 7 images: coredns, etcd, kube-apiserver, kube-controller-manager, kube-proxy, kube-scheduler and pause.</li>
+</ul>
+<p>If a line says <code>FIX</code>, run the step it names again (all Step 3 blocks are safe to run twice, apart from the <code>/etc/hosts</code> append in 3.9), then run the check again.</p>
+</section>
+<section class="sec"><h2 id="step-5-snapshot-and-seal"><span class="eyebrow">Step 5</span>Snapshot and seal</h2>
+<p><strong>Result of this step:</strong> a powered-off, sealed golden VM, ready to clone, plus a snapshot of it from just before sealing.</p>
+<p><strong>Why:</strong></p>
+<ul>
+<li><strong>The snapshot</strong> (<code>pre-seal</code>) lets you go back and change the golden image without reinstalling.</li>
+<li><strong>Sealing</strong> removes everything that must be unique per machine: the machine ID, the SSH host keys, the logs and the shell history. Kubernetes refuses to join two nodes with the same machine ID, and identical SSH host keys would make every node look the same to SSH.</li>
+<li><strong>VirtualBox gives each full clone a new hardware UUID and new MAC addresses</strong>, which kubeadm also checks.</li>
+</ul>
+<h3 id="51-snapshot">5.1 Snapshot</h3>
+<div class="cmd"><div class="cmd-head"><span class="where node">golden VM</span><span class="where-note"></span></div><div class="connect"><span class="connect-lbl">Connect first</span><span class="conn-cmd"><code>ssh -p 2205 root@127.0.0.1</code><button class="copy-mini" type="button" data-copy="ssh -p 2205 root@127.0.0.1" aria-label="Copy ssh -p 2205 root@127.0.0.1">Copy</button></span></div><button class="copy" type="button" aria-label="Copy commands">Copy</button><pre><code>systemctl<span class="w"> </span>poweroff
+</code></pre></div>
+<div class="cmd"><div class="cmd-head"><span class="where win">PowerShell</span><span class="where-note"></span></div><button class="copy" type="button" aria-label="Copy commands">Copy</button><pre><code><span class="nv">$VB</span> <span class="p">=</span> <span class="s2">"C:\Program Files\Oracle\VirtualBox\VBoxManage.exe"</span><span class="p">;</span> <span class="nv">$g</span> <span class="p">=</span> <span class="s2">"ol98-golden"</span>
+<span class="k">while</span> <span class="p">(</span><span class="s2">"</span><span class="p">$(&amp;</span> <span class="nv">$VB</span> <span class="n">showvminfo</span> <span class="nv">$g</span> <span class="p">-</span><span class="n">-machinereadable</span> <span class="p">|</span> <span class="nb">Select-String</span> <span class="s1">'^VMState='</span><span class="p">)</span><span class="s2">"</span> <span class="o">-notmatch</span> <span class="s1">'poweroff'</span><span class="p">)</span> <span class="p">{</span> <span class="nb">Start-Sleep</span> <span class="n">3</span> <span class="p">}</span>
+<span class="p">&amp;</span> <span class="nv">$VB</span> <span class="n">storageattach</span> <span class="nv">$g</span> <span class="p">-</span><span class="n">-storagectl</span> <span class="n">SATA</span> <span class="p">-</span><span class="n">-port</span> <span class="n">5</span> <span class="p">-</span><span class="n">-device</span> <span class="n">0</span> <span class="p">-</span><span class="n">-type</span> <span class="n">dvddrive</span> <span class="p">-</span><span class="n">-medium</span> <span class="n">emptydrive</span>
+<span class="p">&amp;</span> <span class="nv">$VB</span> <span class="n">snapshot</span> <span class="nv">$g</span> <span class="n">take</span> <span class="n">pre-seal</span> <span class="p">-</span><span class="n">-description</span> <span class="s2">"Prepared golden image before sealing"</span>
+<span class="p">&amp;</span> <span class="nv">$VB</span> <span class="n">startvm</span> <span class="nv">$g</span> <span class="p">-</span><span class="n">-type</span> <span class="n">headless</span>
+</code></pre></div>
+<p>If <code>startvm</code> says the VM is locked, wait 10 seconds and run it again; VirtualBox holds a lock briefly after a snapshot. If a snapshot called <code>pre-seal</code> already exists, use a new name such as <code>pre-seal-2</code>.</p>
+<h3 id="52-seal">5.2 Seal</h3>
+<p>Reconnect with <code>ssh -p 2205 root@127.0.0.1</code>, then:</p>
+<div class="cmd"><div class="cmd-head"><span class="where node">golden VM</span><span class="where-note">(the last command powers it off; don&#x27;t start it again before cloning)</span></div><div class="connect"><span class="connect-lbl">Connect first</span><span class="conn-cmd"><code>ssh -p 2205 root@127.0.0.1</code><button class="copy-mini" type="button" data-copy="ssh -p 2205 root@127.0.0.1" aria-label="Copy ssh -p 2205 root@127.0.0.1">Copy</button></span></div><button class="copy" type="button" aria-label="Copy commands">Copy</button><pre><code>dnf<span class="w"> </span>clean<span class="w"> </span>all
+rm<span class="w"> </span>-f<span class="w"> </span>/etc/ssh/ssh_host_*
+truncate<span class="w"> </span>-s<span class="w"> </span><span class="m">0</span><span class="w"> </span>/etc/machine-id
+rm<span class="w"> </span>-f<span class="w"> </span>/var/lib/dbus/machine-id
+rm<span class="w"> </span>-rf<span class="w"> </span>/tmp/*<span class="w"> </span>/var/tmp/*
+journalctl<span class="w"> </span>--rotate<span class="p">;</span><span class="w"> </span>journalctl<span class="w"> </span>--vacuum-time<span class="o">=</span>1s
+rm<span class="w"> </span>-f<span class="w"> </span>/root/.bash_history<span class="p">;</span><span class="w"> </span><span class="nb">history</span><span class="w"> </span>-c
+poweroff
+</code></pre></div>
+<p><strong>Check:</strong></p>
+<div class="cmd"><div class="cmd-head"><span class="where win">PowerShell</span><span class="where-note"></span></div><button class="copy" type="button" aria-label="Copy commands">Copy</button><pre><code><span class="nv">$VB</span> <span class="p">=</span> <span class="s2">"C:\Program Files\Oracle\VirtualBox\VBoxManage.exe"</span><span class="p">;</span> <span class="nv">$g</span> <span class="p">=</span> <span class="s2">"ol98-golden"</span>
+<span class="p">&amp;</span> <span class="nv">$VB</span> <span class="n">list</span> <span class="n">runningvms</span>
+<span class="p">&amp;</span> <span class="nv">$VB</span> <span class="n">snapshot</span> <span class="nv">$g</span> <span class="n">list</span>
+</code></pre></div>
+<p><code>ol98-golden</code> is not running, and the snapshot list shows your <code>pre-seal</code> snapshot.</p>
+<p><strong>Don't boot the golden VM again before cloning.</strong> Booting it gives it a new machine ID and new SSH host keys, so it's no longer sealed. If you do boot it, run 5.2 again before cloning.</p>
+</section>
+<section class="sec"><h2 id="check-and-fix-an-existing-golden-image">Check and fix an existing golden image</h2>
+<p><strong>When to use this:</strong> you already have a golden VM, built earlier or by an older version of the scripts, and want to be sure it has everything in "What the golden image contains" before cloning from it again.</p>
+<p><strong>Why it matters:</strong> during the first build, four problems were fixed by hand on the running nodes after cloning, and only later added to the golden-image preparation. A golden image built before those fixes still lacks them, and every clone inherits the gap:</p>
+<div class="table-wrap"><table>
+<thead>
+<tr>
+<th>Issue</th>
+<th>Missing from an older golden image</th>
+<th>What breaks</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>#8</td>
+<td><code>cri-tools</code> and <code>/etc/crictl.yaml</code></td>
+<td><code>crictl: command not found</code></td>
+</tr>
+<tr>
+<td>#9</td>
+<td>CRI-O pause image set to kubeadm's</td>
+<td>a kubeadm warning, and two pause images pulled</td>
+</tr>
+<tr>
+<td>#17, #44</td>
+<td>SELinux <code>container_manage_cgroup on</code></td>
+<td>RAC pods exit about one second after starting, with no logs, and loop in BackOff</td>
+</tr>
+<tr>
+<td>#20</td>
+<td><code>unzip</code></td>
+<td>the Grid gold image fails to unpack</td>
+</tr>
+</tbody>
+</table></div>
+<h3 id="start-and-connect">Start and connect</h3>
+<p><strong>Why power off the cluster first:</strong> the two workers and the control plane hold about 48 GB of RAM. Skip that line if they're already off.</p>
+<div class="cmd"><div class="cmd-head"><span class="where win">PowerShell</span><span class="where-note"></span></div><button class="copy" type="button" aria-label="Copy commands">Copy</button><pre><code><span class="nv">$VB</span> <span class="p">=</span> <span class="s2">"C:\Program Files\Oracle\VirtualBox\VBoxManage.exe"</span>
+<span class="k">foreach</span> <span class="p">(</span><span class="nv">$v</span> <span class="k">in</span> <span class="s2">"worker1"</span><span class="p">,</span><span class="s2">"worker2"</span><span class="p">,</span><span class="s2">"controlplane"</span><span class="p">)</span> <span class="p">{</span> <span class="p">&amp;</span> <span class="nv">$VB</span> <span class="n">controlvm</span> <span class="nv">$v</span> <span class="n">acpipowerbutton</span> <span class="n">2</span><span class="p">&gt;</span><span class="nv">$null</span> <span class="p">}</span>
+<span class="p">&amp;</span> <span class="nv">$VB</span> <span class="n">startvm</span> <span class="n">ol98-golden</span> <span class="p">-</span><span class="n">-type</span> <span class="n">headless</span>
+</code></pre></div>
+<p>A sealed golden VM makes new SSH host keys when it boots, so forget the old one first. After about a minute:</p>
+<div class="cmd"><div class="cmd-head"><span class="where win">PowerShell</span><span class="where-note"></span></div><button class="copy" type="button" aria-label="Copy commands">Copy</button><pre><code><span class="n">ssh-keygen</span> <span class="n">-R</span> <span class="s2">"[127.0.0.1]:2205"</span> <span class="n">2</span><span class="p">&gt;</span><span class="nv">$null</span>
+<span class="n">ssh</span> <span class="n">-p</span> <span class="n">2205</span> <span class="n">root</span><span class="nv">@127</span><span class="p">.</span><span class="n">0</span><span class="p">.</span><span class="n">0</span><span class="p">.</span><span class="n">1</span>
+</code></pre></div>
+<p>Answer <code>yes</code> to the host key question.</p>
+<h3 id="check">Check</h3>
+<p>Run the check from 4.2. Every <code>FIX</code> line names the step that sets that item.</p>
+<h3 id="fix">Fix</h3>
+<p>Run the steps the <code>FIX</code> lines name. The block below runs 3.6, 3.7 and 3.8 plus the completion lines from 3.9 in one go, which covers every gap found on 24 Oct 2026. All of it is safe to run on a golden VM that already has some of these items. It leaves out the <code>/etc/hosts</code> append from 3.9, which would add the names a second time; run that line only if the check said <code>FIX</code> for it.</p>
+<p>It has one line that the step itself doesn't: <code>systemctl restart crio</code>. CRI-O is already running on an existing golden VM, so it has to restart to pick up the pause-image setting. On a new build, CRI-O starts for the first time in 3.8.</p>
+<p>If the check also said <code>FIX</code> for 3.1 or 3.2 (kernel or kernel arguments), run those steps too and reboot (4.1).</p>
+<div class="cmd"><div class="cmd-head"><span class="where node">golden VM</span><span class="where-note"></span></div><div class="connect"><span class="connect-lbl">Connect first</span><span class="conn-cmd"><code>ssh -p 2205 root@127.0.0.1</code><button class="copy-mini" type="button" data-copy="ssh -p 2205 root@127.0.0.1" aria-label="Copy ssh -p 2205 root@127.0.0.1">Copy</button></span></div><button class="copy" type="button" aria-label="Copy commands">Copy</button><pre><code><span class="c1"># 3.6 tools, SELinux module (reinstalls the same module), cgroup boolean</span>
+dnf<span class="w"> </span>-y<span class="w"> </span>install<span class="w"> </span>container-selinux<span class="w"> </span>selinux-policy-devel<span class="w"> </span>policycoreutils-python-utils<span class="w"> </span>podman<span class="w"> </span>tar<span class="w"> </span>rsync<span class="w"> </span>unzip<span class="w"> </span>jq<span class="w"> </span>iproute-tc<span class="w"> </span>bash-completion<span class="w"> </span>lsof
+mkdir<span class="w"> </span>-p<span class="w"> </span>/var/opt<span class="w"> </span><span class="o">&amp;&amp;</span><span class="w"> </span><span class="nb">cd</span><span class="w"> </span>/var/opt
+cat<span class="w"> </span>&gt;rac-ocne.te<span class="w"> </span><span class="s">&lt;&lt;'EOF'</span>
+<span class="s">module rac-ocne 1.0;</span>
+
+<span class="s">require {</span>
+<span class="s">        type container_init_t;</span>
+<span class="s">        type container_runtime_t;</span>
+<span class="s">        type container_file_t;</span>
+<span class="s">        type kernel_t;</span>
+<span class="s">        type bin_t;</span>
+<span class="s">        type lib_t;</span>
+<span class="s">        type textrel_shlib_t;</span>
+<span class="s">        class file { getattr map execute execmod setattr };</span>
+<span class="s">        class system syslog_read;</span>
+<span class="s">}</span>
+
+<span class="s">allow container_init_t container_runtime_t:file getattr;</span>
+<span class="s">allow container_init_t bin_t:file { map execute };</span>
+<span class="s">allow container_init_t container_file_t:file execmod;</span>
+<span class="s">allow container_init_t lib_t:file execmod;</span>
+<span class="s">allow container_init_t textrel_shlib_t:file setattr;</span>
+<span class="s">allow container_init_t kernel_t:system syslog_read;</span>
+<span class="s">EOF</span>
+make<span class="w"> </span>-f<span class="w"> </span>/usr/share/selinux/devel/Makefile<span class="w"> </span>rac-ocne.pp<span class="w"> </span><span class="o">&amp;&amp;</span><span class="w"> </span>semodule<span class="w"> </span>-i<span class="w"> </span>rac-ocne.pp
+setsebool<span class="w"> </span>-P<span class="w"> </span>container_manage_cgroup<span class="w"> </span>on
+<span class="nb">cd</span><span class="w"> </span>~
+<span class="c1"># 3.7 repositories (pinned to 1.36), Kubernetes and CRI-O packages</span>
+cat<span class="w"> </span>&gt;/etc/yum.repos.d/kubernetes.repo<span class="w"> </span><span class="s">&lt;&lt;'EOF'</span>
+<span class="s">[kubernetes]</span>
+<span class="s">name=Kubernetes</span>
+<span class="s">baseurl=https://pkgs.k8s.io/core:/stable:/v1.36/rpm/</span>
+<span class="s">enabled=1</span>
+<span class="s">gpgcheck=1</span>
+<span class="s">gpgkey=https://pkgs.k8s.io/core:/stable:/v1.36/rpm/repodata/repomd.xml.key</span>
+<span class="s">exclude=kubelet kubeadm kubectl cri-tools kubernetes-cni</span>
+<span class="s">EOF</span>
+cat<span class="w"> </span>&gt;/etc/yum.repos.d/cri-o.repo<span class="w"> </span><span class="s">&lt;&lt;'EOF'</span>
+<span class="s">[cri-o]</span>
+<span class="s">name=CRI-O</span>
+<span class="s">baseurl=https://download.opensuse.org/repositories/isv:/cri-o:/stable:/v1.36/rpm/</span>
+<span class="s">enabled=1</span>
+<span class="s">gpgcheck=1</span>
+<span class="s">gpgkey=https://download.opensuse.org/repositories/isv:/cri-o:/stable:/v1.36/rpm/repodata/repomd.xml.key</span>
+<span class="s">EOF</span>
+dnf<span class="w"> </span>-y<span class="w"> </span>install<span class="w"> </span>cri-o<span class="w"> </span>kubelet<span class="w"> </span>kubeadm<span class="w"> </span>kubectl<span class="w"> </span>cri-tools<span class="w"> </span>--disableexcludes<span class="o">=</span>kubernetes
+<span class="nb">echo</span><span class="w"> </span><span class="s2">"runtime-endpoint: unix:///var/run/crio/crio.sock"</span><span class="w"> </span>&gt;/etc/crictl.yaml
+<span class="c1"># 3.8 CRI-O config, pause image, images (with a restart, because CRI-O is already running)</span>
+mkdir<span class="w"> </span>-p<span class="w"> </span>/etc/crio/crio.conf.d
+<span class="nb">printf</span><span class="w"> </span><span class="s1">'[crio.runtime]\nselinux = true\n'</span><span class="w"> </span>&gt;/etc/crio/crio.conf.d/90-rac-poc.conf
+<span class="nv">PAUSE_IMG</span><span class="o">=</span><span class="k">$(</span>kubeadm<span class="w"> </span>config<span class="w"> </span>images<span class="w"> </span>list<span class="w"> </span><span class="m">2</span>&gt;/dev/null<span class="w"> </span><span class="p">|</span><span class="w"> </span>grep<span class="w"> </span><span class="s1">'/pause:'</span><span class="w"> </span><span class="p">|</span><span class="w"> </span>head<span class="w"> </span>-1<span class="k">)</span>
+<span class="nb">printf</span><span class="w"> </span><span class="s1">'[crio.image]\npause_image = "%s"\n'</span><span class="w"> </span><span class="s2">"</span><span class="nv">$PAUSE_IMG</span><span class="s2">"</span><span class="w"> </span>&gt;/etc/crio/crio.conf.d/91-pause.conf
+rm<span class="w"> </span>-f<span class="w"> </span>/etc/cni/net.d/*crio*bridge*<span class="w"> </span><span class="m">2</span>&gt;/dev/null<span class="w"> </span><span class="o">||</span><span class="w"> </span><span class="nb">true</span>
+systemctl<span class="w"> </span><span class="nb">enable</span><span class="w"> </span>--now<span class="w"> </span>crio
+systemctl<span class="w"> </span>restart<span class="w"> </span>crio
+systemctl<span class="w"> </span><span class="nb">enable</span><span class="w"> </span>kubelet
+kubeadm<span class="w"> </span>config<span class="w"> </span>images<span class="w"> </span>pull<span class="w"> </span>--cri-socket<span class="w"> </span>unix:///var/run/crio/crio.sock
+<span class="c1"># 3.9 completion only (the node names are normally already in /etc/hosts)</span>
+kubectl<span class="w"> </span>completion<span class="w"> </span>bash<span class="w"> </span>&gt;/etc/bash_completion.d/kubectl
+crictl<span class="w"> </span>completion<span class="w"> </span>bash<span class="w"> </span>&gt;/etc/bash_completion.d/crictl
+</code></pre></div>
+<p>It takes 3 to 5 minutes, mostly the image pull. <code>dnf</code> may update CRI-O or the Kubernetes packages to a newer 1.36 release; the repositories are pinned to 1.36, so the minor version can't change.</p>
+<h3 id="verify-again-then-seal">Verify again, then seal</h3>
+<ol>
+<li>Run the check from 4.2 again. Every line should now say <code>OK</code>.</li>
+<li>Seal the VM again with Step 5. Name the snapshot <code>pre-seal-2</code> (or the next free number), because <code>pre-seal</code> already exists.</li>
+</ol>
+<h3 id="result-on-the-labs-golden-image-24-oct-2026">Result on the lab's golden image, 24 Oct 2026</h3>
+<div class="table-wrap"><table>
+<thead>
+<tr>
+<th>Check</th>
+<th>Before</th>
+<th>After</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Kernel, kernel arguments, swap, modules, sysctls, chrony, firewall</td>
+<td>OK</td>
+<td>OK</td>
+</tr>
+<tr>
+<td>SELinux module <code>rac-ocne</code>, kubernetes repo <code>exclude=</code>, <code>/etc/crictl.yaml</code>, CRI-O <code>selinux = true</code>, services enabled, <code>/etc/hosts</code> names</td>
+<td>OK</td>
+<td>OK</td>
+</tr>
+<tr>
+<td>Tools (3.6)</td>
+<td>FIX</td>
+<td>OK, <code>unzip-6.0-60.el9</code>, <code>podman-5.8.2</code></td>
+</tr>
+<tr>
+<td><code>container_manage_cgroup</code> (3.6)</td>
+<td>FIX</td>
+<td>OK, <code>on</code></td>
+</tr>
+<tr>
+<td>Kubernetes and CRI-O packages (3.7)</td>
+<td>FIX</td>
+<td>OK, CRI-O 1.36.7, kubelet/kubeadm/kubectl 1.36.5, cri-tools 1.36.0</td>
+</tr>
+<tr>
+<td>Pause image (3.8)</td>
+<td>FIX</td>
+<td>OK, <code>registry.k8s.io/pause:3.10.2</code></td>
+</tr>
+<tr>
+<td>Control-plane images (3.8)</td>
+<td>FIX</td>
+<td>OK, 7 images</td>
+</tr>
+<tr>
+<td>kubectl and crictl completion (3.9)</td>
+<td>FIX</td>
+<td>OK</td>
+</tr>
+</tbody>
+</table></div>
+<p>The kernel was already <code>5.15.0-325.221.6.5.el9uek</code>. The before-fix output didn't record which individual tool or package was missing; the issue log points to <code>unzip</code> (#20) and <code>cri-tools</code> (#8).</p>
+</section>
+<section class="sec"><h2 id="next-clone-the-three-nodes">Next: clone the three nodes</h2>
+<p>The sealed golden VM is the starting point for the <em>Oracle RAC 19c on kubeadm</em> learning guide from <strong>3.2 Clone and size the nodes</strong> onwards:</p>
+<ol>
+<li><strong>3.2:</strong> full clones <code>controlplane</code>, <code>worker1</code> and <code>worker2</code>, then size them (workers 4 vCPU and 22 GB, with an 80 GB and a 100 GB data disk).</li>
+<li><strong>3.3:</strong> the two shared ASM disks, attached to both workers.</li>
+<li><strong>Phase 4:</strong> personalize each clone, one at a time, because every clone boots on the golden VM's address 10.0.1.5.</li>
+<li><strong>Phase 5 onwards:</strong> Kubernetes, Multus, the ASM volumes, the RAC image, the RAC pods, Grid and the database.</li>
+</ol>
+<p><strong>Before cloning, check:</strong></p>
+<ul>
+<li><code>ol98-golden</code> is powered off and hasn't been booted since 5.2;</li>
+<li>the NAT Network <code>k8s-public</code> exists (<code>VBoxManage natnetwork list</code>), because the clones inherit NIC1's attachment to it by name;</li>
+<li>no VMs called <code>controlplane</code>, <code>worker1</code> or <code>worker2</code> exist yet (<code>VBoxManage list vms</code>).</li>
+</ul>
+<p><strong>To change the golden image later:</strong> boot it, make the change, add a check for it to 4.2, run the check, then seal again with a new snapshot name. Clones made earlier don't pick up the change; apply it to them separately or reclone.</p></section>
+  <footer class="foot">Built from the lab's build log and scripts (rac-k8s-poc). Values are from the author's lab; change them to match yours.</footer>
+  </main>
+</div>
+</div>
+<script>(function () {
+  // Copy buttons: copy the commands without the "where" label
+  document.querySelectorAll('.cmd').forEach(function (box) {
+    var btn = box.querySelector('.copy'), code = box.querySelector('pre code');
+    if (!btn || !code) return;
+    btn.addEventListener('click', function () {
+      var text = code.innerText.replace(/\n$/, '');
+      var done = function () { btn.textContent = 'Copied'; btn.classList.add('done'); setTimeout(function () { btn.textContent = 'Copy'; btn.classList.remove('done'); }, 1600); };
+      var fallback = function () {
+        var r = document.createRange(); r.selectNodeContents(code);
+        var s = window.getSelection(); s.removeAllRanges(); s.addRange(r);
+        btn.textContent = 'Selected: press Ctrl+C';
+      };
+      try {
+        if (navigator.clipboard && navigator.clipboard.writeText) navigator.clipboard.writeText(text).then(done, fallback);
+        else fallback();
+      } catch (e) { fallback(); }
+    });
+  });
+  // Highlight the current section in the contents
+  var links = Array.prototype.slice.call(document.querySelectorAll('.toc a'));
+  var map = {};
+  links.forEach(function (a) { map[a.getAttribute('href').slice(1)] = a; });
+  if ('IntersectionObserver' in window) {
+    var obs = new IntersectionObserver(function (entries) {
+      entries.forEach(function (e) {
+        if (e.isIntersecting) {
+          links.forEach(function (a) { a.classList.remove('active'); });
+          var a = map[e.target.id]; if (a) a.classList.add('active');
+        }
+      });
+    }, { rootMargin: '0px 0px -75% 0px' });
+    document.querySelectorAll('.sec h2[id]').forEach(function (h) { obs.observe(h); });
+  }
+  // Collapse the contents by default on narrow screens
+  if (window.matchMedia && window.matchMedia('(max-width: 960px)').matches) {
+    var d = document.querySelector('.toc details'); if (d) d.removeAttribute('open');
+  }
+})();
+(function () {
+  document.querySelectorAll('.copy-mini').forEach(function (b) {
+    b.addEventListener('click', function () {
+      var t = b.getAttribute('data-copy');
+      var ok = function () { b.textContent = 'Copied'; b.classList.add('done'); setTimeout(function () { b.textContent = 'Copy'; b.classList.remove('done'); }, 1600); };
+      try { if (navigator.clipboard && navigator.clipboard.writeText) navigator.clipboard.writeText(t).then(ok, function () { b.textContent = 'Select and copy'; }); else b.textContent = 'Select and copy'; } catch (e) { b.textContent = 'Select and copy'; }
+    });
+  });
+})();
+</script>
+
+</body>
+</html>

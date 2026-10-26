@@ -1,0 +1,68 @@
+# racnode-np-svc.yaml - NodePort services for clients outside the cluster (Oracle doc, "Connect to the
+# Database with a Client", step 3), unchanged. Needs the db-lsnr listener on 30203,30204 and each
+# instance's local_listener set to its VIP FQDN and port (steps 1-2): a NodePort keeps the port
+# number, so the listener port must equal the node port.
+#   30200 -> SCAN listeners (1521) on both pods
+#   30201/30202 -> ONS (6200) on racnode1-0 / racnode2-0
+#   30203/30204 -> db-lsnr on racnode1-0 / racnode2-0
+apiVersion: v1
+kind: Service
+metadata:
+  name: racnode-scan-lsnr
+  namespace: rac
+spec:
+  type: NodePort
+  ports:
+    - port: 1521
+      nodePort: 30200
+      targetPort: 1521
+  selector:
+    cluster: racnode
+---
+apiVersion: v1
+kind: Service
+metadata:
+  labels:
+   cluster: racnode
+   scan_svc_np: racnode1-np
+  name: racnode1-np
+  namespace: rac
+spec:
+  type: NodePort
+  ports:
+  - name: ons-np-30201
+    nodePort: 30201
+    port: 6200
+    protocol: TCP
+    targetPort: 6200
+  - name: nodelsnr-np-30203
+    nodePort: 30203
+    port: 30203
+    protocol: TCP
+    targetPort: 30203
+  selector:
+   hostname: racnode1-0
+---
+apiVersion: v1
+kind: Service
+metadata:
+  labels:
+   cluster: racnode
+   scan_svc_np: racnode2-np
+  name: racnode2-np
+  namespace: rac
+spec:
+  type: NodePort
+  ports:
+  - name: ons-np-30202
+    nodePort: 30202
+    port: 6200
+    protocol: TCP
+    targetPort: 6200
+  - name: nodelsnr-np-30204
+    nodePort: 30204
+    port: 30204
+    protocol: TCP
+    targetPort: 30204
+  selector:
+   hostname: racnode2-0

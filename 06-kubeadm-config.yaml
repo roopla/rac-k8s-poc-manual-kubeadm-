@@ -1,0 +1,29 @@
+# 06-kubeadm-config.yaml  -  used on controlplane:  kubeadm init --config 06-kubeadm-config.yaml
+# kubeadm API v1beta4 (Kubernetes 1.31+). kubernetesVersion is omitted, so kubeadm uses its own version.
+apiVersion: kubeadm.k8s.io/v1beta4
+kind: InitConfiguration
+localAPIEndpoint:
+  advertiseAddress: 10.0.1.10
+  bindPort: 6443
+nodeRegistration:
+  name: controlplane
+  criSocket: unix:///var/run/crio/crio.sock
+---
+apiVersion: kubeadm.k8s.io/v1beta4
+kind: ClusterConfiguration
+clusterName: rac-poc
+controlPlaneEndpoint: 10.0.1.10:6443
+networking:
+  podSubnet: 10.244.0.0/16        # Flannel default; the doc's gi.rsp expects eth0 in 10.244.0.0
+  serviceSubnet: 10.96.0.0/12
+  dnsDomain: cluster.local        # SCAN resolves as racnode-scan.rac.svc.cluster.local
+---
+# Applied to every node that joins (kubeadm stores it in the kubelet-config ConfigMap).
+# Replaces the doc's --allowed-unsafe-sysctls flag in /etc/sysconfig/kubelet.
+apiVersion: kubelet.config.k8s.io/v1beta1
+kind: KubeletConfiguration
+cgroupDriver: systemd
+allowedUnsafeSysctls:
+  - "kernel.shm*"
+  - "kernel.sem"
+  - "net.*"

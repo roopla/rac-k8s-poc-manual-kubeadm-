@@ -1,0 +1,49 @@
+# Containerfile - Oracle RAC pod image, built from scratch the way the Oracle "RAC on OCNE" doc does
+# ("Create the Oracle RAC Container Image", Oracle Linux 9 variant). Contains no Oracle software:
+# Grid and DB homes are installed later into /u01, which is a host directory on each worker.
+#
+# Same steps as the doc:
+#   - Oracle Linux 9 base, oracle-database-preinstall-19c, systemd, sshd and tools
+#   - asmadmin 54334 / asmdba 54335 / asmoper 54336 groups, grid user 54332, oracle in asmdba/racdba
+#   - grid user limits copied from the oracle ones
+#   - preinstall first-boot service removed, TasksMax=80%, dnf-makecache removed
+#   - setupContainerEnv.sh run from rc.local at every pod start (ASM disk ownership)
+#   - ping with network capabilities, systemd as PID 1
+# Differences: full registry name for the base image (no short-name prompt), the dnf-makecache
+# timer is removed too, rc.local is created if the base image lacks it, dnf caches are cleaned,
+# and the NFS rpc_pipefs mount is masked (it fails in containers and leaves systemd degraded).
+
+FROM container-registry.oracle.com/os/oraclelinux:9
+
+ENV SCRIPT_DIR=/opt/scripts/startup \
+    SETUPCONTAINERENV=setupContainerEnv.sh
+
+COPY $SETUPCONTAINERENV $SCRIPT_DIR/
+
+# (systemctl mask below: NFS rpc_pipefs cannot mount in a container, which leaves systemd
+#  "degraded"; Grid's cluster verification flags that as PRVE-10323)
+RUN set -e; \
+    dnf install -y oracle-database-preinstall-19c systemd vim openssh-server hostname \
+                   policycoreutils-python-utils libxcrypt-compat; \
+    dnf clean all; \
+    groupadd -g 54334 asmadmin; \
+    groupadd -g 54335 asmdba; \
+    groupadd -g 54336 asmoper; \
+    useradd -u 54332 -g oinstall -G oinstall,asmadmin,asmdba,asmoper,racdba grid; \
+    usermod -g oinstall -G oinstall,dba,oper,backupdba,dgdba,kmdba,asmdba,racdba oracle; \
+    sed 's/oracle/grid/g' /etc/security/limits.d/oracle-database-preinstall-19c.conf \
+        > /etc/security/limits.d/grid-database-preinstall-19c.conf; \
+    rm -f /etc/systemd/system/oracle-database-preinstall-19c-firstboot.service; \
+    sed -i 's/^TasksMax\S*/TasksMax=80%/g' /usr/lib/systemd/system/user-.slice.d/10-defaults.conf; \
+    rm -f /usr/lib/systemd/system/dnf-makecache.service /usr/lib/systemd/system/dnf-makecache.timer; \
+    if [ ! -f /etc/rc.d/rc.local ]; then mkdir -p /etc/rc.d; printf '#!/bin/bash\n' > /etc/rc.d/rc.local; fi; \
+    [ -e /etc/rc.local ] || ln -s rc.d/rc.local /etc/rc.local; \
+    echo "$SCRIPT_DIR/$SETUPCONTAINERENV" >> /etc/rc.d/rc.local; \
+    chmod +x /etc/rc.d/rc.local $SCRIPT_DIR/$SETUPCONTAINERENV; \
+    setcap 'cap_net_admin,cap_net_raw+ep' /usr/bin/ping; \
+    systemctl mask var-lib-nfs-rpc_pipefs.mount; \
+    sync
+
+USER root
+WORKDIR /root
+CMD ["/usr/sbin/init"]

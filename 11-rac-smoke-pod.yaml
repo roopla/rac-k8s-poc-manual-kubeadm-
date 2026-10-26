@@ -1,0 +1,49 @@
+# 11-rac-smoke-pod.yaml
+# One pod on worker1 with the Oracle doc's RAC pod settings (sysctls, capabilities, hugepages,
+# /dev/shm, ASM block devices, Multus eth1/eth2, command /usr/sbin/init), but small CPU/memory.
+# Proves the image, SELinux policy, unsafe sysctls, hugepages and ASM devices all work together
+# before any Oracle software is installed. Deleted again by 10-rac-image-and-asm.ps1.
+apiVersion: v1
+kind: Pod
+metadata:
+  name: rac-smoke
+  namespace: rac
+  annotations:
+    k8s.v1.cni.cncf.io/networks: '[
+      {"name":"macvlan-conf1","namespace":"multus-rac","interface":"eth1","ips":["10.0.11.147/24"]},
+      {"name":"macvlan-conf2","namespace":"multus-rac","interface":"eth2","ips":["10.0.12.147/24"]}
+    ]'
+spec:
+  nodeSelector:
+    kubernetes.io/hostname: worker1
+  securityContext:
+    sysctls:
+      - { name: kernel.shmall, value: "2097152" }
+      - { name: kernel.sem,    value: "250 32000 100 128" }
+      - { name: kernel.shmmax, value: "8589934592" }
+      - { name: kernel.shmmni, value: "4096" }
+      - { name: net.ipv4.conf.all.rp_filter, value: "2" }
+  volumes:
+    - name: myshm
+      emptyDir: { medium: Memory }
+    - name: asmvol1
+      persistentVolumeClaim: { claimName: block-asm-pvc-vol1 }
+    - name: asmvol2
+      persistentVolumeClaim: { claimName: block-asm-pvc-vol2 }
+  containers:
+    - name: rac
+      image: localhost/oracle/database-rac:19-ol9-slim
+      imagePullPolicy: IfNotPresent
+      command: ["/usr/sbin/init"]
+      resources:
+        requests: { memory: "2Gi", cpu: "1" }
+        limits:   { memory: "2Gi", cpu: "1", hugepages-2Mi: "1Gi" }
+      securityContext:
+        privileged: false
+        capabilities:
+          add: ["NET_ADMIN", "NET_RAW", "SYS_CHROOT", "SYS_NICE", "SYS_RESOURCE", "AUDIT_WRITE", "AUDIT_CONTROL"]
+      volumeDevices:
+        - { name: asmvol1, devicePath: /dev/asm-disk1 }
+        - { name: asmvol2, devicePath: /dev/asm-disk2 }
+      volumeMounts:
+        - { name: myshm, mountPath: /dev/shm }

@@ -1,0 +1,672 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>ASM Device Chain</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wght@500;600;700;800&family=Source+Sans+3:ital,wght@0,400;0,600;0,700;1,400&family=JetBrains+Mono:wght@400;600&display=swap">
+<style>/* Layout: runbook. Hero band, sticky phase index on the left, one reading column with
+   dark command panels; each panel is labelled with where it runs (PC, VM, pod). */
+:root {
+  --bg: #f6f7f8; --surface: #ffffff; --fg: #17212b; --muted: #57636f; --line: #d5dbe1;
+  --accent: #0b6e78; --accent-soft: #e1f0f1; --band: #eef2f4;
+  --code-bg: #121b23; --code-fg: #e3e9ef; --code-muted: #8b9aa8;
+  --win: #2a5db0; --win-soft: #e3ecfa; --node: #2c7a4b; --node-soft: #e1f2e7; --pod: #6a49b5; --pod-soft: #ece6f8;
+  --tk-key: #ff9e7a; --tk-str: #a5d6a7; --tk-var: #8ecbff; --tk-num: #f3c969; --tk-com: #7f8e9c;
+  --font-display: "Archivo", "Helvetica Neue", Arial, sans-serif;
+  --font-body: "Source Sans 3", "Segoe UI", Roboto, Arial, sans-serif;
+  --font-mono: "JetBrains Mono", "Cascadia Mono", Consolas, "Liberation Mono", monospace;
+}
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) {
+  --bg: #0e1419; --surface: #141c23; --fg: #e3e9ee; --muted: #9caab6; --line: #2a3641;
+  --accent: #55bcc6; --accent-soft: #123239; --band: #18222b;
+  --code-bg: #0a1016; --code-fg: #e3e9ef; --code-muted: #8b9aa8;
+  --win: #8db4f2; --win-soft: #18283f; --node: #79c79a; --node-soft: #152b20; --pod: #b9a2f0; --pod-soft: #251d3a;
+  color-scheme: dark; } }
+:root[data-theme="dark"] {
+  --bg: #0e1419; --surface: #141c23; --fg: #e3e9ee; --muted: #9caab6; --line: #2a3641;
+  --accent: #55bcc6; --accent-soft: #123239; --band: #18222b;
+  --code-bg: #0a1016; --code-fg: #e3e9ef; --code-muted: #8b9aa8;
+  --win: #8db4f2; --win-soft: #18283f; --node: #79c79a; --node-soft: #152b20; --pod: #b9a2f0; --pod-soft: #251d3a;
+  color-scheme: dark; }
+
+* { box-sizing: border-box; }
+body { background: var(--bg); color: var(--fg); font: 17px/1.6 var(--font-body); margin: 0; }
+a { color: var(--accent); text-underline-offset: 2px; }
+a:focus-visible, button:focus-visible, summary:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; border-radius: 4px; }
+
+.hero { background: var(--surface); border-bottom: 1px solid var(--line);
+  padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px)); padding-block: 40px 28px; }
+.hero-in { max-width: 1120px; margin: 0 auto; display: grid; gap: 14px; }
+.kicker { margin: 0; font: 600 13px/1.3 var(--font-display); letter-spacing: .08em; text-transform: uppercase; color: var(--accent); }
+h1 { margin: 0; font: 800 clamp(34px, 5vw, 54px)/1.05 var(--font-display); letter-spacing: -.02em; text-wrap: balance; }
+.lede { margin: 0; max-width: 66ch; font-size: 19px; color: var(--muted); }
+.stack { list-style: none; margin: 0; padding: 0; display: flex; flex-wrap: wrap; gap: 8px; }
+.stack li { font: 500 13px/1 var(--font-mono); padding: 7px 10px; border: 1px solid var(--line); border-radius: 6px; background: var(--bg); }
+.meta { margin: 0; font-size: 15px; color: var(--muted); max-width: 90ch; }
+.pdf { margin-left: 8px; font-weight: 600; }
+.legend .where { justify-self: start; }
+.legend { display: grid; grid-template-columns: max-content 1fr; gap: 6px 12px; align-items: center; font-size: 14px; color: var(--muted); margin-top: 4px; }
+
+.where { display: inline-block; font: 600 12px/1 var(--font-mono); padding: 5px 8px; border-radius: 5px; white-space: nowrap; }
+.where.win { color: var(--win); background: var(--win-soft); }
+.where.node { color: var(--node); background: var(--node-soft); }
+.where.pod { color: var(--pod); background: var(--pod-soft); }
+.where.file { color: var(--code-muted); background: transparent; border: 1px solid #2a3641; }
+
+.layout { max-width: 1120px; margin: 0 auto; display: grid; grid-template-columns: 250px minmax(0, 1fr); gap: 40px;
+  padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px)); padding-block: 32px 64px; }
+.toc { position: sticky; top: calc(env(safe-area-inset-top, 0px) + 16px); align-self: start; max-height: calc(100vh - 32px); overflow: auto; font-size: 15px; }
+.toc summary { font: 700 13px/1 var(--font-display); text-transform: uppercase; letter-spacing: .08em; color: var(--muted); cursor: pointer; padding: 4px 0 10px; }
+.toc ol { list-style: none; margin: 0; padding: 0; display: grid; gap: 2px; }
+.toc a { display: grid; grid-template-columns: 26px 1fr; gap: 4px; padding: 6px 8px; border-radius: 6px; color: var(--fg); text-decoration: none; line-height: 1.3; }
+.toc a:hover { background: var(--accent-soft); }
+.toc a.active { background: var(--accent-soft); color: var(--accent); font-weight: 600; }
+.toc-num { font: 600 12px/1.6 var(--font-mono); color: var(--muted); font-variant-numeric: tabular-nums; }
+
+.content { min-width: 0; max-width: 820px; }
+.sec { padding-bottom: 28px; margin-bottom: 36px; border-bottom: 1px solid var(--line); }
+.sec:last-of-type { border-bottom: 0; }
+h2 { font: 700 30px/1.15 var(--font-display); letter-spacing: -.01em; margin: 0 0 18px; text-wrap: balance; scroll-margin-top: 16px; display: grid; gap: 6px; }
+.eyebrow { font: 600 13px/1 var(--font-mono); color: var(--accent); letter-spacing: .04em; text-transform: uppercase; }
+h3 { font: 700 20px/1.25 var(--font-display); margin: 32px 0 10px; scroll-margin-top: 16px; text-wrap: balance; }
+p, li { max-width: 72ch; }
+p { margin: 0 0 14px; }
+ul, ol { margin: 0 0 14px; padding-left: 1.3em; }
+li { margin: 4px 0; }
+strong { font-weight: 700; }
+code { font: 500 .86em var(--font-mono); background: var(--band); padding: .1em .35em; border-radius: 4px; overflow-wrap: anywhere; }
+
+.cmd { position: relative; margin: 12px 0 18px; background: var(--code-bg); border-radius: 10px; overflow: hidden; }
+.cmd-head { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; padding: 10px 86px 0 14px; }
+.where-note { font: 12px/1.4 var(--font-mono); color: var(--code-muted); }
+.copy { position: absolute; top: 8px; right: 8px; font: 600 12px/1 var(--font-body); color: var(--code-fg); background: transparent; border: 1px solid #3a4754; border-radius: 6px; padding: 7px 10px; cursor: pointer; }
+.copy:hover { background: #1f2b36; }
+.copy.done { color: #a5d6a7; border-color: #3f6b48; }
+.cmd pre { margin: 0; padding: 12px 14px 16px; overflow-x: auto; }
+.cmd pre code { background: none; padding: 0; color: var(--code-fg); font: 400 13.5px/1.55 var(--font-mono); white-space: pre; overflow-wrap: normal; }
+.cmd .k, .cmd .kn, .cmd .kd, .cmd .ow { color: var(--tk-key); }
+.cmd .s, .cmd .s1, .cmd .s2, .cmd .sh, .cmd .sb, .cmd .sd, .cmd .se { color: var(--tk-str); }
+.cmd .nv, .cmd .nb, .cmd .vg, .cmd .nf { color: var(--tk-var); }
+.cmd .m, .cmd .mi, .cmd .mf { color: var(--tk-num); }
+.cmd .c, .cmd .c1, .cmd .cm, .cmd .ch { color: var(--tk-com); font-style: italic; }
+
+.table-wrap { overflow-x: auto; margin: 12px 0 18px; border: 1px solid var(--line); border-radius: 10px; background: var(--surface); }
+table { border-collapse: collapse; width: 100%; font-size: 15px; }
+th, td { text-align: left; vertical-align: top; padding: 9px 12px; border-bottom: 1px solid var(--line); }
+th { font: 700 13px/1.3 var(--font-display); text-transform: uppercase; letter-spacing: .05em; color: var(--muted); background: var(--band); }
+tr:last-child td { border-bottom: 0; }
+
+.diagram { margin: 18px 0 22px; padding: 12px; background: var(--surface); border: 1px solid var(--line); border-radius: 12px; overflow-x: auto; }
+.diagram svg { display: block; width: 100%; min-width: 620px; height: auto; font-family: var(--font-body); }
+.diagram figcaption { font-size: 14px; color: var(--muted); margin-top: 6px; }
+.d-box { fill: none; stroke: var(--muted); stroke-width: 1.25; }
+.d-pod { fill: var(--accent-soft); stroke: var(--accent); stroke-width: 2; }
+.d-band { fill: var(--band); stroke: var(--line); stroke-width: 1; }
+.d-line line { stroke: var(--muted); stroke-width: 1.25; fill: none; }
+.d-arrowhead { fill: var(--muted); }
+.d-title { font: 700 15px var(--font-display); fill: var(--fg); }
+.d-name { font-size: 13px; font-weight: 700; fill: var(--fg); }
+.d-text { font-size: 11.5px; fill: var(--fg); }
+.d-quiet { font-size: 11.5px; fill: var(--muted); }
+.d-small { font-size: 10.5px; fill: var(--muted); }
+
+.foot { color: var(--muted); font-size: 14px; padding-top: 8px; }
+
+@media (max-width: 960px) {
+  .layout { grid-template-columns: minmax(0, 1fr); gap: 16px; }
+  .toc { position: static; max-height: none; border: 1px solid var(--line); border-radius: 10px; padding: 10px 12px; background: var(--surface); }
+  .legend { grid-template-columns: 1fr; }
+  .legend span:not(.where) { margin-bottom: 6px; }
+}
+@media (prefers-reduced-motion: reduce) { * { scroll-behavior: auto !important; } }
+@media (prefers-reduced-motion: no-preference) { html { scroll-behavior: smooth; } }
+
+/* print / PDF */
+.shell.print .toc, .shell.print .copy { display: none; }
+.shell.print .layout { grid-template-columns: minmax(0, 1fr); padding-block: 8px; }
+.shell.print .content { max-width: none; }
+.shell.print .cmd pre code { white-space: pre-wrap; overflow-wrap: anywhere; font-size: 11.5px; }
+.shell.print .sec { break-before: page; border-bottom: 0; }
+.shell.print .cmd, .shell.print .diagram, .shell.print tr { break-inside: avoid; }
+.shell.print .diagram svg { min-width: 0; }
+.shell.print .hero { padding-block: 24px; }
+@media print {
+  .toc, .copy { display: none; }
+  .layout { grid-template-columns: minmax(0, 1fr); }
+  .cmd pre code { white-space: pre-wrap; }
+}
+@media (max-width: 640px) { table { min-width: 560px; } h2 { font-size: 26px; } }
+.shell.print { font-size: 12.5px; line-height: 1.5; }
+.shell.print h1 { font-size: 34px; }
+.shell.print .lede { font-size: 14px; }
+.shell.print h2 { font-size: 22px; }
+.shell.print h3 { font-size: 15px; margin-top: 18px; }
+.shell.print p, .shell.print li { max-width: none; }
+.shell.print table { font-size: 11.5px; }
+.shell.print .cmd pre code { font-size: 10px; line-height: 1.45; }
+.shell.print .stack li, .shell.print .where { font-size: 10px; }
+.shell.print .sec { break-before: auto; }
+.shell.print .sec h2 { break-after: avoid; }
+.shell.print h3 { break-after: avoid; }
+
+.connect { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 8px; padding: 8px 14px 0; font: 12px/1.5 var(--font-mono); color: var(--code-muted); }
+.connect-lbl { font: 600 11px/1 var(--font-body, inherit); letter-spacing: .04em; text-transform: uppercase; color: var(--code-muted); margin-right: 2px; }
+.conn-cmd { display: inline-flex; align-items: center; gap: 6px; }
+.conn-cmd code { color: var(--code-fg, inherit); background: rgba(127,127,127,.16); padding: 2px 6px; border-radius: 4px; }
+.copy-mini { font: 600 11px/1 var(--font-body, inherit); padding: 4px 8px; border-radius: 6px; border: 1px solid rgba(127,127,127,.4); background: transparent; color: var(--code-muted); cursor: pointer; }
+.copy-mini:hover { color: var(--code-fg, inherit); }
+.copy-mini.done { color: var(--accent, #2bb3a3); border-color: currentColor; }
+.print .copy-mini { display: none; }
+</style>
+</head>
+<body>
+<div class="shell ">
+<header class="hero">
+  <div class="hero-in">
+    <p class="kicker">Companion to the RAC on kubeadm lab guide</p>
+    <h1>How the ASM disks reach the pods</h1>
+    <p class="lede">Follow one shared disk through nine layers, from a VirtualBox file on Windows to a member of the ASM disk group inside two RAC pods: what each layer names it, who creates that name, why it exists, and how to see it.</p>
+    <ul class="stack">
+      <li>VirtualBox shareable VDI</li><li>udev /dev/disk/by-id</li><li>Block PV and PVC</li><li>volumeDevices</li><li>CRI-O</li><li>Oracle ASM</li>
+    </ul>
+    <p class="meta">25 Oct 2026 · The lab follows Oracle's <a href="https://docs.oracle.com/en/database/oracle/oracle-database/19/rackb/install-configure-rac-olcne.html">How to Install and Configure Oracle RAC on Oracle Cloud Native Environment</a>. This page explains guide steps 3.3, 7, 8.2, 10.4 and 11.3 from the disk's point of view. <a class="pdf" href="rac-k8s-asm-device-chain.pdf">PDF version</a></p>
+    <div class="legend" aria-label="Where commands run">
+      <span class="where win">PowerShell</span><span>on your PC</span>
+      <span class="where node">worker · controlplane</span><span>root shell on a VM</span>
+      <span class="where pod">racnode1-0</span><span>root shell in a RAC pod</span>
+          </div>
+  </div>
+</header>
+<div class="layout">
+  <nav class="toc" aria-label="Contents">
+    <details open><summary>Contents</summary><ol><li><a href="#the-chain-at-a-glance"><span class="toc-num"></span>The chain at a glance</a></li>
+<li><a href="#layer-1-virtualbox-one-file-attached-to-two-vms"><span class="toc-num"></span>Layer 1: VirtualBox, one file attached to two VMs</a></li>
+<li><a href="#layer-2-and-3-the-workers-kernel-and-udev"><span class="toc-num"></span>Layer 2 and 3: the worker&#x27;s kernel and udev</a></li>
+<li><a href="#layers-4-and-5-persistentvolume-and-persistentvolumeclaim"><span class="toc-num"></span>Layers 4 and 5: PersistentVolume and PersistentVolumeClaim</a></li>
+<li><a href="#layers-6-and-7-the-pod-spec-kubelet-and-cri-o"><span class="toc-num"></span>Layers 6 and 7: the pod spec, kubelet and CRI-O</a></li>
+<li><a href="#layer-8-ownership-inside-the-pod"><span class="toc-num"></span>Layer 8: ownership inside the pod</a></li>
+<li><a href="#layer-9-oracle-asm"><span class="toc-num"></span>Layer 9: Oracle ASM</a></li>
+<li><a href="#follow-one-disk-end-to-end"><span class="toc-num"></span>Follow one disk end to end</a></li>
+<li><a href="#compared-with-udev-rules-on-bare-metal"><span class="toc-num"></span>Compared with udev rules on bare metal</a></li>
+<li><a href="#what-goes-wrong-at-each-layer"><span class="toc-num"></span>What goes wrong at each layer</a></li>
+<li><a href="#in-production"><span class="toc-num"></span>In production</a></li></ol></details>
+  </nav>
+  <main class="content"><section class="sec"><h2 id="the-chain-at-a-glance">The chain at a glance</h2>
+<p>RAC needs every instance to read and write the same disks. In this lab that means two 50 GB virtual disks that both RAC pods open as <code>/dev/asm-disk1</code> and <code>/dev/asm-disk2</code>. Between the VirtualBox file on Windows and the device ASM opens inside a pod, the disk passes through nine layers. Each layer gives it a different name, and each one exists for a reason.</p>
+<figure class="diagram"><svg viewBox="0 0 760 644" role="img" aria-label="One VDI becomes /dev/asm-disk1 in both pods through nine layers">
+<defs><marker id="ch-arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path class="d-arrowhead" d="M0 0L10 5L0 10z"/></marker></defs>
+<text class="d-title" x="24" y="34">One VDI becomes /dev/asm-disk1 in both pods through nine layers</text>
+<g class="d-line">
+<line x1="380" y1="108" x2="380" y2="122" marker-end="url(#ch-arrow)"/>
+<line x1="380" y1="172" x2="380" y2="186" marker-end="url(#ch-arrow)"/>
+<line x1="380" y1="236" x2="380" y2="250" marker-end="url(#ch-arrow)"/>
+<line x1="380" y1="300" x2="380" y2="314" marker-end="url(#ch-arrow)"/>
+<line x1="380" y1="364" x2="380" y2="378" marker-end="url(#ch-arrow)"/>
+<line x1="380" y1="428" x2="380" y2="442" marker-end="url(#ch-arrow)"/>
+<line x1="380" y1="492" x2="380" y2="506" marker-end="url(#ch-arrow)"/>
+<line x1="380" y1="556" x2="380" y2="570" marker-end="url(#ch-arrow)"/>
+</g>
+<rect class="d-box" x="24" y="60" width="712" height="48" rx="8"/><text class="d-name" x="40" y="80">1 · VirtualBox on Windows</text><text class="d-quiet" x="40" y="98">D:\VMs\rac-poc\shared\asm1.vdi: 50 GB, fixed, shareable, on SATA port 3 of worker1 and of worker2</text>
+<rect class="d-box" x="24" y="124" width="712" height="48" rx="8"/><text class="d-name" x="40" y="144">2 · Worker kernel</text><text class="d-quiet" x="40" y="162">/dev/sdX: named in discovery order, so the letter can differ between workers and between boots</text>
+<rect class="d-box" x="24" y="188" width="712" height="48" rx="8"/><text class="d-name" x="40" y="208">3 · udev on the worker</text><text class="d-quiet" x="40" y="226">/dev/disk/by-id/ata-VBOX_HARDDISK_VB0a042402-…: from the disk serial, the same on both workers</text>
+<rect class="d-box" x="24" y="252" width="712" height="48" rx="8"/><text class="d-name" x="40" y="272">4 · PersistentVolume</text><text class="d-quiet" x="40" y="290">block-asm-disk1-pv-vol1: volumeMode Block, local path = the by-id name, usable on worker1 and worker2</text>
+<rect class="d-box" x="24" y="316" width="712" height="48" rx="8"/><text class="d-name" x="40" y="336">5 · PersistentVolumeClaim</text><text class="d-quiet" x="40" y="354">block-asm-pvc-vol1 in namespace rac, bound to that PV by the label asm_vol</text>
+<rect class="d-box" x="24" y="380" width="712" height="48" rx="8"/><text class="d-name" x="40" y="400">6 · StatefulSet pod spec</text><text class="d-quiet" x="40" y="418">volumeDevices: claim asmvol1 appears in the pod at devicePath /dev/asm-disk1</text>
+<rect class="d-box" x="24" y="444" width="712" height="48" rx="8"/><text class="d-name" x="40" y="464">7 · kubelet and CRI-O</text><text class="d-quiet" x="40" y="482">create the device node /dev/asm-disk1 in the pod and allow it in the pod&#x27;s cgroup; owner root</text>
+<rect class="d-box" x="24" y="508" width="712" height="48" rx="8"/><text class="d-name" x="40" y="528">8 · setupContainerEnv.sh</text><text class="d-quiet" x="40" y="546">at every pod start: chown grid:asmadmin, chmod 660</text>
+<rect class="d-pod" x="24" y="572" width="712" height="48" rx="8"/><text class="d-name" x="40" y="592">9 · Oracle ASM</text><text class="d-quiet" x="40" y="610">discovery string /dev/asm*, disk group DATA: external redundancy, 4 MB allocation unit</text>
+</svg><figcaption>ASM disk 1 from the VDI file to ASM. The same chain runs on each worker and ends at the same file.</figcaption></figure>
+<p>The same chain runs twice in parallel, once on each worker, and both chains end at the same file. That's what makes the disk shared.</p>
+<div class="table-wrap"><table>
+<thead>
+<tr>
+<th>#</th>
+<th>Layer</th>
+<th>Disk 1 is called</th>
+<th>Created by</th>
+<th>Guide step</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>1</td>
+<td>VirtualBox</td>
+<td><code>D:\VMs\rac-poc\shared\asm1.vdi</code></td>
+<td><code>VBoxManage createmedium ... --variant Fixed</code>, <code>--type shareable</code></td>
+<td>3.3</td>
+</tr>
+<tr>
+<td>2</td>
+<td>Worker kernel</td>
+<td><code>/dev/sdd</code> or similar; the letter isn't fixed</td>
+<td>the kernel's SATA driver, in discovery order</td>
+<td>automatic</td>
+</tr>
+<tr>
+<td>3</td>
+<td>udev on the worker</td>
+<td><code>/dev/disk/by-id/ata-VBOX_HARDDISK_VB0a042402-…</code></td>
+<td>udev's default rules, from the disk serial</td>
+<td>automatic</td>
+</tr>
+<tr>
+<td>4</td>
+<td>PersistentVolume</td>
+<td><code>block-asm-disk1-pv-vol1</code></td>
+<td><code>kubectl apply</code></td>
+<td>7.3</td>
+</tr>
+<tr>
+<td>5</td>
+<td>PersistentVolumeClaim</td>
+<td><code>rac/block-asm-pvc-vol1</code></td>
+<td><code>kubectl apply</code></td>
+<td>7.3</td>
+</tr>
+<tr>
+<td>6</td>
+<td>Pod spec</td>
+<td>volume <code>asmvol1</code>, <code>devicePath: /dev/asm-disk1</code></td>
+<td>the StatefulSets</td>
+<td>10.4</td>
+</tr>
+<tr>
+<td>7</td>
+<td>Device node in the pod</td>
+<td><code>/dev/asm-disk1</code>, owner <code>root</code></td>
+<td>kubelet and CRI-O, at every container start</td>
+<td>automatic</td>
+</tr>
+<tr>
+<td>8</td>
+<td>Ownership in the pod</td>
+<td><code>/dev/asm-disk1</code>, <code>grid:asmadmin 660</code></td>
+<td><code>setupContainerEnv.sh</code> from <code>rc.local</code></td>
+<td>8.2 (image)</td>
+</tr>
+<tr>
+<td>9</td>
+<td>Oracle ASM</td>
+<td>disk <code>DATA_0000</code> in disk group <code>DATA</code></td>
+<td><code>gridSetup.sh</code> and its response file</td>
+<td>11.3, 11.4</td>
+</tr>
+</tbody>
+</table></div>
+<p>The two most useful names to remember: <strong><code>/dev/disk/by-id/...</code></strong> is how the workers find the disk (layer 3), and <strong><code>/dev/asm-disk1</code></strong> is how the pods and ASM know it (layers 6 to 9). Everything between them is Kubernetes translating one into the other.</p>
+</section>
+<section class="sec"><h2 id="layer-1-virtualbox-one-file-attached-to-two-vms">Layer 1: VirtualBox, one file attached to two VMs</h2>
+<p><strong>What:</strong> each ASM disk is one VDI file in <code>D:\VMs\rac-poc\shared</code>, attached to worker1 <strong>and</strong> worker2 on the same SATA port (asm1 on port 3, asm2 on port 4).</p>
+<p><strong>Why it's built this way:</strong></p>
+<ul>
+<li><strong><code>--type shareable</code>:</strong> by default VirtualBox lets one running VM at a time use a disk, and caches writes per VM. Shareable mode lets two VMs use it at once and sends every write straight to the file, so each worker sees the other's writes. That stands in for a SAN LUN zoned to two servers.</li>
+<li><strong><code>--variant Fixed</code>:</strong> VirtualBox only allows the shareable type on fixed-size disks, so the full 50 GB is allocated on the host at creation.</li>
+<li><strong><code>--mtype shareable</code> on <code>storageattach</code>:</strong> the attachment must also be marked shareable, on both VMs.</li>
+<li><strong>No snapshots of the workers:</strong> VirtualBox can't snapshot a VM that has a shareable disk attached.</li>
+</ul>
+<p><strong>The serial number matters later.</strong> VirtualBox reports each VDI to the guest with the model <code>VBOX HARDDISK</code> and a serial built from the disk's UUID: <code>VB</code>, the first 8 hex characters of the UUID, a dash, then 8 more characters derived from the end of the UUID. For example, a disk with UUID <code>0a042402-aaab-4af2-af32-72c3c052dac5</code> gets a serial starting with <code>VB0a042402-</code>. The UUID is new every time a disk is created, so your serials differ from the examples here. Because both workers attach the same file, they both see the same serial.</p>
+<div class="cmd"><div class="cmd-head"><span class="where win">PowerShell</span><span class="where-note">(see layer 1)</span></div><button class="copy" type="button" aria-label="Copy commands">Copy</button><pre><code><span class="nv">$VB</span> <span class="p">=</span> <span class="s2">"C:\Program Files\Oracle\VirtualBox\VBoxManage.exe"</span>
+<span class="k">foreach</span> <span class="p">(</span><span class="nv">$d</span> <span class="k">in</span> <span class="s2">"asm1"</span><span class="p">,</span><span class="s2">"asm2"</span><span class="p">)</span> <span class="p">{</span> <span class="p">&amp;</span> <span class="nv">$VB</span> <span class="n">showmediuminfo</span> <span class="n">disk</span> <span class="s2">"D:\VMs\rac-poc\shared\$d.vdi"</span> <span class="p">|</span> <span class="nb">Select-String</span> <span class="s1">'^(UUID|Type|Format variant|In use by|  )'</span> <span class="p">}</span>
+</code></pre></div>
+<p><strong>What you should see:</strong> for each disk, <code>Type: shareable</code>, <code>Format variant: fixed default</code>, and both <code>worker1</code> and <code>worker2</code> under "In use by VMs".</p>
+</section>
+<section class="sec"><h2 id="layer-2-and-3-the-workers-kernel-and-udev">Layer 2 and 3: the worker's kernel and udev</h2>
+<p><strong>Layer 2, the kernel name (<code>/dev/sdX</code>):</strong> when a worker boots, the kernel's SATA (AHCI) driver finds four disks besides the OS disk: the 80 GB and 100 GB data disks and the two 50 GB ASM disks. It names them <code>sdb</code>, <code>sdc</code>, <code>sdd</code>, <code>sde</code> in the order they're discovered. <strong>That order isn't the VirtualBox port order and isn't guaranteed to match between workers or between boots.</strong> In the first build, <code>/dev/sdc</code> on worker2 was an ASM disk, while the setup script expected the 100 GB data disk there. Formatting by name would have wiped the shared disk (issue #7).</p>
+<p><strong>Layer 3, the stable name (<code>/dev/disk/by-id/...</code>):</strong> udev runs on every worker, and its <strong>default</strong> rules (<code>60-persistent-storage.rules</code>, shipped with the OS) read each disk's model and serial and create a symbolic link from them:</p>
+<div class="cmd"><div class="cmd-head"><span class="where file">text</span><span class="where-note"></span></div><button class="copy" type="button" aria-label="Copy commands">Copy</button><pre><code>/dev/disk/by-id/ata-VBOX_HARDDISK_VB0a042402-…  -&gt;  ../../sdd
+</code></pre></div>
+<p>The link name comes from the disk itself, not from discovery order, so it's the same on both workers and after every reboot. Only the target (<code>sdd</code>) can differ. <strong>This is the only place udev takes part, and nobody writes a rule for it.</strong></p>
+<p><strong>Why by-id and not the doc's <code>/dev/sdd</code>:</strong> Oracle's document points the PersistentVolumes at <code>/dev/sdd</code> and <code>/dev/sde</code>. That's safe on hardware where the names are predictable, but not here. Using <code>/dev/disk/by-id/...</code> is a deliberate deviation from the doc.</p>
+<div class="cmd"><div class="cmd-head"><span class="where node">worker1, then worker2</span><span class="where-note">(see layers 2 and 3)</span></div><div class="connect"><span class="connect-lbl">Connect first</span><span class="conn-cmd"><code>ssh -p 2211 root@127.0.0.1</code><button class="copy-mini" type="button" data-copy="ssh -p 2211 root@127.0.0.1" aria-label="Copy ssh -p 2211 root@127.0.0.1">Copy</button></span> for worker1, <span class="conn-cmd"><code>ssh -p 2212 root@127.0.0.1</code><button class="copy-mini" type="button" data-copy="ssh -p 2212 root@127.0.0.1" aria-label="Copy ssh -p 2212 root@127.0.0.1">Copy</button></span> for worker2</div><button class="copy" type="button" aria-label="Copy commands">Copy</button><pre><code>lsblk<span class="w"> </span>-d<span class="w"> </span>-o<span class="w"> </span>NAME,SIZE,SERIAL,TYPE
+ls<span class="w"> </span>-l<span class="w"> </span>/dev/disk/by-id/<span class="w"> </span><span class="p">|</span><span class="w"> </span>grep<span class="w"> </span>VBOX_HARDDISK<span class="w"> </span><span class="p">|</span><span class="w"> </span>grep<span class="w"> </span>-v<span class="w"> </span>part
+blkid<span class="w"> </span>/dev/disk/by-id/ata-VBOX_HARDDISK_VB*<span class="w"> </span><span class="m">2</span>&gt;/dev/null
+</code></pre></div>
+<p><strong>What you should see:</strong> <strong>three</strong> 50 GB disks on each worker, because the OS disk is also 50 GB. The two shared ones are the two whose serial and by-id name appear on <strong>both</strong> workers; the OS disk's serial is different on each worker, because each worker has its own copy. The shared disks can have different <code>sdX</code> letters on the two workers (in one rebuild they were <code>sdc</code>/<code>sdd</code> on worker1 and <code>sdd</code>/<code>sde</code> on worker2). <code>blkid</code> also lists the OS disk and the two data disks (<code>xfs</code>). The two ASM disks are missing from it before the Grid install, because they're blank; after it they show <code>TYPE="oracleasm"</code>, which is ASM's own header.</p>
+</section>
+<section class="sec"><h2 id="layers-4-and-5-persistentvolume-and-persistentvolumeclaim">Layers 4 and 5: PersistentVolume and PersistentVolumeClaim</h2>
+<p>Kubernetes doesn't let a pod name a host device directly. A pod asks for a <strong>claim</strong>; the claim is bound to a <strong>volume</strong>; the volume says which device on which nodes. That indirection is what lets the same pod definition run on either worker.</p>
+<p><strong>Layer 4, the PersistentVolume (<code>block-asm-disk1-pv-vol1</code>)</strong>, from guide 7.3:</p>
+<div class="cmd"><div class="cmd-head"><span class="where file">yaml</span><span class="where-note"></span></div><button class="copy" type="button" aria-label="Copy commands">Copy</button><pre><code><span class="nt">apiVersion</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">v1</span>
+<span class="nt">kind</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">PersistentVolume</span>
+<span class="nt">metadata</span><span class="p">:</span>
+<span class="w">  </span><span class="nt">name</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">block-asm-disk1-pv-vol1</span>
+<span class="w">  </span><span class="nt">labels</span><span class="p">:</span><span class="w"> </span><span class="p p-Indicator">{</span><span class="nt"> asm_vol</span><span class="p">:</span><span class="w"> </span><span class="nv">block-asm-pv-vol1</span><span class="w"> </span><span class="p p-Indicator">}</span>
+<span class="nt">spec</span><span class="p">:</span>
+<span class="w">  </span><span class="nt">volumeMode</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">Block</span>
+<span class="w">  </span><span class="nt">capacity</span><span class="p">:</span><span class="w"> </span><span class="p p-Indicator">{</span><span class="nt"> storage</span><span class="p">:</span><span class="w"> </span><span class="nv">50Gi</span><span class="w"> </span><span class="p p-Indicator">}</span>
+<span class="w">  </span><span class="nt">accessModes</span><span class="p">:</span><span class="w"> </span><span class="p p-Indicator">[</span><span class="nv">ReadWriteMany</span><span class="p p-Indicator">]</span>
+<span class="w">  </span><span class="nt">persistentVolumeReclaimPolicy</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">Retain</span>
+<span class="w">  </span><span class="nt">local</span><span class="p">:</span><span class="w"> </span><span class="p p-Indicator">{</span><span class="nt"> path</span><span class="p">:</span><span class="w"> </span><span class="nv">/dev/disk/by-id/ata-VBOX_HARDDISK_VB0a042402-…</span><span class="w"> </span><span class="p p-Indicator">}</span>
+<span class="w">  </span><span class="nt">nodeAffinity</span><span class="p">:</span>
+<span class="w">    </span><span class="nt">required</span><span class="p">:</span>
+<span class="w">      </span><span class="nt">nodeSelectorTerms</span><span class="p">:</span>
+<span class="w">      </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="nt">matchExpressions</span><span class="p">:</span>
+<span class="w">        </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="p p-Indicator">{</span><span class="nt"> key</span><span class="p">:</span><span class="w"> </span><span class="nv">kubernetes.io/hostname</span><span class="p p-Indicator">,</span><span class="nt"> operator</span><span class="p">:</span><span class="w"> </span><span class="nv">In</span><span class="p p-Indicator">,</span><span class="nt"> values</span><span class="p">:</span><span class="w"> </span><span class="p p-Indicator">[</span><span class="nv">worker1</span><span class="p p-Indicator">,</span><span class="w"> </span><span class="nv">worker2</span><span class="p p-Indicator">]</span><span class="w"> </span><span class="p p-Indicator">}</span>
+</code></pre></div>
+<ul>
+<li><strong><code>volumeMode: Block</code>:</strong> the pod gets a raw device, not a mounted filesystem. ASM manages the disk itself and must not have a filesystem on it.</li>
+<li><strong><code>local: { path: ... }</code>:</strong> a "local" volume is a disk that's physically on the node, with no storage driver in between. The path is the layer 3 name, so it means the right disk on both workers.</li>
+<li><strong><code>nodeAffinity</code> with both workers:</strong> a local volume only exists where its device exists. Listing both workers tells the scheduler the PV is usable on either. Normally a local PV lists one node; here two nodes really do have the same disk, because of layer 1.</li>
+<li><strong><code>ReadWriteMany</code>:</strong> both RAC pods use the disk at the same time. Kubernetes doesn't coordinate those writes; ASM and the RAC cluster do, exactly as with a SAN.</li>
+<li><strong><code>Retain</code>:</strong> deleting the claim never touches the disk. Nothing deletes or wipes it automatically.</li>
+<li><strong>No StorageClass:</strong> these volumes are created by hand ("static provisioning"), so there's no driver that could create, resize or delete disks.</li>
+</ul>
+<p><strong>Layer 5, the PersistentVolumeClaim (<code>rac/block-asm-pvc-vol1</code>):</strong></p>
+<div class="cmd"><div class="cmd-head"><span class="where file">yaml</span><span class="where-note"></span></div><button class="copy" type="button" aria-label="Copy commands">Copy</button><pre><code><span class="nt">apiVersion</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">v1</span>
+<span class="nt">kind</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">PersistentVolumeClaim</span>
+<span class="nt">metadata</span><span class="p">:</span>
+<span class="w">  </span><span class="nt">name</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">block-asm-pvc-vol1</span>
+<span class="w">  </span><span class="nt">namespace</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">rac</span>
+<span class="nt">spec</span><span class="p">:</span>
+<span class="w">  </span><span class="nt">accessModes</span><span class="p">:</span><span class="w"> </span><span class="p p-Indicator">[</span><span class="nv">ReadWriteMany</span><span class="p p-Indicator">]</span>
+<span class="w">  </span><span class="nt">volumeMode</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">Block</span>
+<span class="w">  </span><span class="nt">storageClassName</span><span class="p">:</span><span class="w"> </span><span class="s">""</span>
+<span class="w">  </span><span class="nt">resources</span><span class="p">:</span><span class="w"> </span><span class="p p-Indicator">{</span><span class="nt"> requests</span><span class="p">:</span><span class="w"> </span><span class="p p-Indicator">{</span><span class="nt"> storage</span><span class="p">:</span><span class="w"> </span><span class="nv">50Gi</span><span class="w"> </span><span class="p p-Indicator">}</span><span class="w"> </span><span class="p p-Indicator">}</span>
+<span class="w">  </span><span class="nt">selector</span><span class="p">:</span><span class="w"> </span><span class="p p-Indicator">{</span><span class="nt"> matchLabels</span><span class="p">:</span><span class="w"> </span><span class="p p-Indicator">{</span><span class="nt"> asm_vol</span><span class="p">:</span><span class="w"> </span><span class="nv">block-asm-pv-vol1</span><span class="w"> </span><span class="p p-Indicator">}</span><span class="w"> </span><span class="p p-Indicator">}</span>
+</code></pre></div>
+<ul>
+<li><strong><code>selector</code> on the label <code>asm_vol</code>:</strong> without it Kubernetes could bind claim 1 to either 50 GB volume. The label pins claim 1 to disk 1 and claim 2 to disk 2.</li>
+<li><strong><code>storageClassName: ""</code>:</strong> "don't create a volume for me, bind to an existing one".</li>
+<li><strong>The claim is the only thing the pod refers to.</strong> It lives in namespace <code>rac</code>; the PV has no namespace.</li>
+</ul>
+<div class="cmd"><div class="cmd-head"><span class="where node">controlplane</span><span class="where-note">(see layers 4 and 5)</span></div><div class="connect"><span class="connect-lbl">Connect first</span><span class="conn-cmd"><code>ssh -p 2210 root@127.0.0.1</code><button class="copy-mini" type="button" data-copy="ssh -p 2210 root@127.0.0.1" aria-label="Copy ssh -p 2210 root@127.0.0.1">Copy</button></span></div><button class="copy" type="button" aria-label="Copy commands">Copy</button><pre><code>kubectl<span class="w"> </span>get<span class="w"> </span>pv<span class="w"> </span>-o<span class="w"> </span>custom-columns<span class="o">=</span>PV:.metadata.name,MODE:.spec.volumeMode,PATH:.spec.local.path,CLAIM:.spec.claimRef.name,STATUS:.status.phase
+kubectl<span class="w"> </span>-n<span class="w"> </span>rac<span class="w"> </span>get<span class="w"> </span>pvc
+</code></pre></div>
+<p><strong>What you should see:</strong> both PVs <code>Bound</code>, each to its own claim, each with the by-id path of its own disk.</p>
+</section>
+<section class="sec"><h2 id="layers-6-and-7-the-pod-spec-kubelet-and-cri-o">Layers 6 and 7: the pod spec, kubelet and CRI-O</h2>
+<p><strong>Layer 6, the pod spec.</strong> Each RAC StatefulSet (guide 10.4) names the claims and says where the devices should appear inside the container:</p>
+<div class="cmd"><div class="cmd-head"><span class="where file">yaml</span><span class="where-note"></span></div><button class="copy" type="button" aria-label="Copy commands">Copy</button><pre><code><span class="w">     </span><span class="nt">volumes</span><span class="p">:</span>
+<span class="w">       </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="nt">name</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">asmvol1</span>
+<span class="w">         </span><span class="nt">persistentVolumeClaim</span><span class="p">:</span><span class="w"> </span><span class="p p-Indicator">{</span><span class="nt"> claimName</span><span class="p">:</span><span class="w"> </span><span class="nv">block-asm-pvc-vol1</span><span class="w"> </span><span class="p p-Indicator">}</span>
+<span class="w">       </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="nt">name</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">asmvol2</span>
+<span class="w">         </span><span class="nt">persistentVolumeClaim</span><span class="p">:</span><span class="w"> </span><span class="p p-Indicator">{</span><span class="nt"> claimName</span><span class="p">:</span><span class="w"> </span><span class="nv">block-asm-pvc-vol2</span><span class="w"> </span><span class="p p-Indicator">}</span>
+<span class="w">     </span><span class="nt">containers</span><span class="p">:</span>
+<span class="w">       </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="nt">name</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">racnode1-0</span>
+<span class="w">         </span><span class="nt">volumeDevices</span><span class="p">:</span>
+<span class="w">         </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="p p-Indicator">{</span><span class="nt"> name</span><span class="p">:</span><span class="w"> </span><span class="nv">asmvol1</span><span class="p p-Indicator">,</span><span class="nt"> devicePath</span><span class="p">:</span><span class="w"> </span><span class="nv">/dev/asm-disk1</span><span class="w"> </span><span class="p p-Indicator">}</span>
+<span class="w">         </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="p p-Indicator">{</span><span class="nt"> name</span><span class="p">:</span><span class="w"> </span><span class="nv">asmvol2</span><span class="p p-Indicator">,</span><span class="nt"> devicePath</span><span class="p">:</span><span class="w"> </span><span class="nv">/dev/asm-disk2</span><span class="w"> </span><span class="p p-Indicator">}</span>
+</code></pre></div>
+<ul>
+<li><strong><code>volumeDevices</code>, not <code>volumeMounts</code>:</strong> a block volume is exposed as a device file; there's nothing to mount.</li>
+<li><strong><code>devicePath</code>:</strong> the name inside the container. This is where <code>/dev/asm-disk1</code> comes from: it's chosen here, the same in both pods, whatever the disk is called on the worker. It does the job a udev alias such as <code>/dev/oracleasm/disk1</code> does on bare metal.</li>
+<li><strong>Both StatefulSets use the same two claims.</strong> That's allowed because the claims are <code>ReadWriteMany</code>.</li>
+<li><strong>The pod is not privileged</strong> (<code>privileged: false</code>). It can reach exactly the devices listed here and no others.</li>
+</ul>
+<p><strong>Layer 7, the device node.</strong> When the pod is scheduled on a worker, that worker's kubelet:</p>
+<ol>
+<li>finds the PV behind each claim and checks the PV's <code>nodeAffinity</code> allows this node;</li>
+<li>resolves the local path <code>/dev/disk/by-id/...</code> to the real device on this node (for example <code>/dev/sdd</code>);</li>
+<li>records the mapping under <code>/var/lib/kubelet</code> (a "global map path" for the volume and a per-pod link to it);</li>
+<li>passes the container runtime (CRI-O) a device entry: host device → container path <code>/dev/asm-disk1</code>, with read, write and mknod permission.</li>
+</ol>
+<p>CRI-O, through the low-level runtime, then:</p>
+<ul>
+<li><strong>creates a device node</strong> <code>/dev/asm-disk1</code> in the container's own <code>/dev</code>, with the same major and minor numbers as the host device, so it's the same disk;</li>
+<li><strong>adds a cgroup device rule</strong> that allows the container to open that one device. Without the rule, even root in the container would get "operation not permitted".</li>
+</ul>
+<p>Two consequences matter for RAC:</p>
+<ul>
+<li><strong>The node is created as <code>root</code>, not <code>grid</code>.</strong> It's a new file in the container's <code>/dev</code>, so ownership set on the worker's <code>/dev/sdd</code> doesn't carry over. That's why layer 8 exists.</li>
+<li><strong>It's created again at every container start.</strong> A recreated pod gets fresh, root-owned nodes, so layer 8 must run at every start, not once.</li>
+</ul>
+<div class="cmd"><div class="cmd-head"><span class="where pod">worker1</span><span class="where-note">(see layers 6 and 7, while racnode1-0 runs there)</span></div><div class="connect"><span class="connect-lbl">Connect first</span><span class="conn-cmd"><code>ssh -p 2211 root@127.0.0.1</code><button class="copy-mini" type="button" data-copy="ssh -p 2211 root@127.0.0.1" aria-label="Copy ssh -p 2211 root@127.0.0.1">Copy</button></span></div><button class="copy" type="button" aria-label="Copy commands">Copy</button><pre><code>ls<span class="w"> </span>-l<span class="w"> </span>/dev/disk/by-id/<span class="w"> </span><span class="p">|</span><span class="w"> </span>grep<span class="w"> </span>VBOX_HARDDISK<span class="w"> </span><span class="p">|</span><span class="w"> </span>grep<span class="w"> </span>-v<span class="w"> </span>part
+ls<span class="w"> </span>-l<span class="w"> </span>/dev/sd?
+find<span class="w"> </span>/var/lib/kubelet<span class="w"> </span>-path<span class="w"> </span><span class="s1">'*volumeDevices*'</span><span class="w"> </span>-name<span class="w"> </span><span class="s1">'block-asm*'</span><span class="w"> </span><span class="m">2</span>&gt;/dev/null
+</code></pre></div>
+<div class="cmd"><div class="cmd-head"><span class="where pod">racnode1-0</span><span class="where-note">(the same disk, from inside the pod)</span></div><div class="connect"><span class="connect-lbl">Connect first</span><span class="conn-cmd"><code>ssh -p 2210 root@127.0.0.1</code><button class="copy-mini" type="button" data-copy="ssh -p 2210 root@127.0.0.1" aria-label="Copy ssh -p 2210 root@127.0.0.1">Copy</button></span>, then <span class="conn-cmd"><code>kubectl -n rac exec -it racnode1-0 -- bash</code><button class="copy-mini" type="button" data-copy="kubectl -n rac exec -it racnode1-0 -- bash" aria-label="Copy kubectl -n rac exec -it racnode1-0 -- bash">Copy</button></span></div><button class="copy" type="button" aria-label="Copy commands">Copy</button><pre><code>ls<span class="w"> </span>-l<span class="w"> </span>/dev/asm-disk1<span class="w"> </span>/dev/asm-disk2
+</code></pre></div>
+<p><strong>What you should see:</strong> the major and minor numbers of <code>/dev/asm-disk1</code> in the pod (the two numbers before the date, such as <code>8, 48</code>) match the numbers <code>ls -l /dev/sd?</code> shows on the worker for the <code>sdX</code> its by-id link points to. The <code>find</code> lists the kubelet's map entries for the two PVs.</p>
+</section>
+<section class="sec"><h2 id="layer-8-ownership-inside-the-pod">Layer 8: ownership inside the pod</h2>
+<p>ASM runs as <code>grid</code>, in group <code>asmadmin</code>, and must open the disks for reading and writing. On bare metal a udev rule sets that. Inside the pod there's no udev running (the pod runs systemd, but <code>/dev</code> is created by the container runtime and isn't managed by udev), so the image does it with a script.</p>
+<p><code>setupContainerEnv.sh</code>, built into the RAC image in guide 8.2 and run from <code>rc.local</code> at every pod start:</p>
+<div class="cmd"><div class="cmd-head"><span class="where file">bash</span><span class="where-note"></span></div><button class="copy" type="button" aria-label="Copy commands">Copy</button><pre><code><span class="k">for</span><span class="w"> </span>d<span class="w"> </span><span class="k">in</span><span class="w"> </span>/dev/asm-disk*<span class="p">;</span><span class="w"> </span><span class="k">do</span>
+<span class="w">  </span><span class="o">[</span><span class="w"> </span>-b<span class="w"> </span><span class="s2">"</span><span class="nv">$d</span><span class="s2">"</span><span class="w"> </span><span class="o">]</span><span class="w"> </span><span class="o">||</span><span class="w"> </span><span class="k">continue</span>
+<span class="w">  </span>chown<span class="w"> </span>grid:asmadmin<span class="w"> </span><span class="s2">"</span><span class="nv">$d</span><span class="s2">"</span>
+<span class="w">  </span>chmod<span class="w"> </span><span class="m">660</span><span class="w"> </span><span class="s2">"</span><span class="nv">$d</span><span class="s2">"</span>
+<span class="k">done</span>
+</code></pre></div>
+<ul>
+<li><strong><code>-b</code>:</strong> only real block devices are touched.</li>
+<li><strong>The fixed IDs matter:</strong> <code>grid</code> is UID 54332 and <code>asmadmin</code> GID 54334 in the image. The numbers are what's stored, and the Oracle homes on <code>/u01</code> (which outlive the pod) use the same IDs.</li>
+<li><strong>Order at start-up:</strong> in a recreated pod, the restart hook that starts Grid (guide Phase 14) is called at the end of this same script, so the devices already belong to <code>grid</code> when ASM starts.</li>
+</ul>
+<div class="cmd"><div class="cmd-head"><span class="where node">controlplane</span><span class="where-note">(see layer 8 in both pods)</span></div><div class="connect"><span class="connect-lbl">Connect first</span><span class="conn-cmd"><code>ssh -p 2210 root@127.0.0.1</code><button class="copy-mini" type="button" data-copy="ssh -p 2210 root@127.0.0.1" aria-label="Copy ssh -p 2210 root@127.0.0.1">Copy</button></span></div><button class="copy" type="button" aria-label="Copy commands">Copy</button><pre><code><span class="k">for</span><span class="w"> </span>p<span class="w"> </span><span class="k">in</span><span class="w"> </span>racnode1-0<span class="w"> </span>racnode2-0<span class="p">;</span><span class="w"> </span><span class="k">do</span><span class="w"> </span>kubectl<span class="w"> </span>-n<span class="w"> </span>rac<span class="w"> </span><span class="nb">exec</span><span class="w"> </span><span class="nv">$p</span><span class="w"> </span>--<span class="w"> </span>stat<span class="w"> </span>-c<span class="w"> </span><span class="s2">"</span><span class="nv">$p</span><span class="s2"> %n %U:%G %a"</span><span class="w"> </span>/dev/asm-disk1<span class="w"> </span>/dev/asm-disk2<span class="p">;</span><span class="w"> </span><span class="k">done</span>
+</code></pre></div>
+<p><strong>What you should see:</strong> four lines, all <code>grid:asmadmin 660</code>. This is part of the guide's check in 10.5.</p>
+</section>
+<section class="sec"><h2 id="layer-9-oracle-asm">Layer 9: Oracle ASM</h2>
+<p>The Grid response file (guide 11.3) only ever uses the pod-side names:</p>
+<div class="cmd"><div class="cmd-head"><span class="where file">text</span><span class="where-note"></span></div><button class="copy" type="button" aria-label="Copy commands">Copy</button><pre><code>oracle.install.asm.diskGroup.name=DATA
+oracle.install.asm.diskGroup.redundancy=EXTERNAL
+oracle.install.asm.diskGroup.AUSize=4
+oracle.install.asm.diskGroup.disks=/dev/asm-disk1,/dev/asm-disk2
+oracle.install.asm.diskGroup.diskDiscoveryString=/dev/asm*
+</code></pre></div>
+<ul>
+<li><strong><code>diskDiscoveryString=/dev/asm*</code>:</strong> where ASM looks for candidate disks, in every instance. Both pods have the same two names, so both ASM instances find the same disks.</li>
+<li><strong><code>EXTERNAL</code> redundancy:</strong> ASM doesn't mirror. The two disks are striped into one 100 GB disk group, and protection is left to the storage below (here, none; in production, the SAN's RAID).</li>
+<li><strong>4 MB allocation unit:</strong> the unit ASM allocates space in.</li>
+<li><strong>ASM writes its own header to each disk.</strong> That header names the disk group and the disk (<code>DATA_0000</code>, <code>DATA_0001</code>). It's how ASM recognises its disks whatever their path, and it's what <code>blkid</code> on the worker reports as <code>oracleasm</code>. It's also why the old ASM disks have to be deleted before a rebuild: a new install refuses disks that already belong to a disk group.</li>
+</ul>
+<p><strong>How the instances share the disks safely:</strong> both ASM instances, and both database instances, write to the same blocks. Kubernetes and VirtualBox don't prevent conflicts; the RAC cluster does, with its own locking over the private interconnect (Phase 6). This is exactly how RAC uses a SAN.</p>
+<div class="cmd"><div class="cmd-head"><span class="where pod">racnode1-0</span><span class="where-note">(see layer 9; as grid)</span></div><div class="connect"><span class="connect-lbl">Connect first</span><span class="conn-cmd"><code>ssh -p 2210 root@127.0.0.1</code><button class="copy-mini" type="button" data-copy="ssh -p 2210 root@127.0.0.1" aria-label="Copy ssh -p 2210 root@127.0.0.1">Copy</button></span>, then <span class="conn-cmd"><code>kubectl -n rac exec -it racnode1-0 -- bash</code><button class="copy-mini" type="button" data-copy="kubectl -n rac exec -it racnode1-0 -- bash" aria-label="Copy kubectl -n rac exec -it racnode1-0 -- bash">Copy</button></span></div><button class="copy" type="button" aria-label="Copy commands">Copy</button><pre><code>su<span class="w"> </span>-<span class="w"> </span>grid<span class="w"> </span>-c<span class="w"> </span><span class="s2">"asmcmd lsdsk -k"</span>
+su<span class="w"> </span>-<span class="w"> </span>grid<span class="w"> </span>-c<span class="w"> </span><span class="s2">"asmcmd lsdg"</span>
+</code></pre></div>
+<p><strong>What you should see:</strong> two disks, <code>/dev/asm-disk1</code> and <code>/dev/asm-disk2</code>, in disk group <code>DATA</code>, which is <code>MOUNTED</code> with external redundancy (<code>EXTERN</code>).</p>
+</section>
+<section class="sec"><h2 id="follow-one-disk-end-to-end">Follow one disk end to end</h2>
+<p>Run these in order to trace asm1 from the VDI file to ASM. The first block runs on the PC; it opens SSH sessions itself.</p>
+<div class="cmd"><div class="cmd-head"><span class="where win">PowerShell</span><span class="where-note">(layers 1 to 3)</span></div><button class="copy" type="button" aria-label="Copy commands">Copy</button><pre><code><span class="nv">$VB</span> <span class="p">=</span> <span class="s2">"C:\Program Files\Oracle\VirtualBox\VBoxManage.exe"</span>
+<span class="nv">$pre</span> <span class="p">=</span> <span class="p">((&amp;</span> <span class="nv">$VB</span> <span class="n">showmediuminfo</span> <span class="n">disk</span> <span class="s2">"D:\VMs\rac-poc\shared\asm1.vdi"</span><span class="p">)</span> <span class="p">|</span> <span class="nb">Select-String</span> <span class="s1">'^UUID:\s+([0-9a-f]{8})'</span><span class="p">).</span><span class="n">Matches</span><span class="p">[</span><span class="n">0</span><span class="p">].</span><span class="n">Groups</span><span class="p">[</span><span class="n">1</span><span class="p">].</span><span class="n">Value</span>
+<span class="s2">"layer 1: asm1.vdi UUID starts with $pre"</span>
+<span class="k">foreach</span> <span class="p">(</span><span class="nv">$p</span> <span class="k">in</span> <span class="n">2211</span><span class="p">,</span> <span class="n">2212</span><span class="p">)</span> <span class="p">{</span> <span class="n">ssh</span> <span class="n">-p</span> <span class="nv">$p</span> <span class="n">root</span><span class="nv">@127</span><span class="p">.</span><span class="n">0</span><span class="p">.</span><span class="n">0</span><span class="p">.</span><span class="n">1</span> <span class="s2">"hostname; ls -l /dev/disk/by-id/ | grep -v part | grep VB$pre-; stat -L -c 'major:minor %t:%T' /dev/disk/by-id/ata-VBOX_HARDDISK_VB$pre-*"</span> <span class="p">}</span>
+</code></pre></div>
+<div class="cmd"><div class="cmd-head"><span class="where node">controlplane</span><span class="where-note">(layers 4 to 9)</span></div><div class="connect"><span class="connect-lbl">Connect first</span><span class="conn-cmd"><code>ssh -p 2210 root@127.0.0.1</code><button class="copy-mini" type="button" data-copy="ssh -p 2210 root@127.0.0.1" aria-label="Copy ssh -p 2210 root@127.0.0.1">Copy</button></span></div><button class="copy" type="button" aria-label="Copy commands">Copy</button><pre><code><span class="nb">echo</span><span class="w"> </span><span class="s2">"layer 4  </span><span class="k">$(</span>kubectl<span class="w"> </span>get<span class="w"> </span>pv<span class="w"> </span>block-asm-disk1-pv-vol1<span class="w"> </span>-o<span class="w"> </span><span class="nv">jsonpath</span><span class="o">=</span><span class="s1">'{.spec.local.path} {.status.phase}'</span><span class="k">)</span><span class="s2">"</span>
+<span class="nb">echo</span><span class="w"> </span><span class="s2">"layer 5  </span><span class="k">$(</span>kubectl<span class="w"> </span>-n<span class="w"> </span>rac<span class="w"> </span>get<span class="w"> </span>pvc<span class="w"> </span>block-asm-pvc-vol1<span class="w"> </span>-o<span class="w"> </span><span class="nv">jsonpath</span><span class="o">=</span><span class="s1">'{.spec.volumeName} {.status.phase}'</span><span class="k">)</span><span class="s2">"</span>
+<span class="nb">echo</span><span class="w"> </span><span class="s2">"layer 6  </span><span class="k">$(</span>kubectl<span class="w"> </span>-n<span class="w"> </span>rac<span class="w"> </span>get<span class="w"> </span>sts<span class="w"> </span>racnode1<span class="w"> </span>-o<span class="w"> </span><span class="nv">jsonpath</span><span class="o">=</span><span class="s1">'{.spec.template.spec.containers[0].volumeDevices[0]}'</span><span class="k">)</span><span class="s2">"</span>
+<span class="k">for</span><span class="w"> </span>p<span class="w"> </span><span class="k">in</span><span class="w"> </span>racnode1-0<span class="w"> </span>racnode2-0<span class="p">;</span><span class="w"> </span><span class="k">do</span>
+<span class="w">  </span><span class="nb">echo</span><span class="w"> </span><span class="s2">"layers 7-8 in </span><span class="nv">$p</span><span class="s2">: </span><span class="k">$(</span>kubectl<span class="w"> </span>-n<span class="w"> </span>rac<span class="w"> </span><span class="nb">exec</span><span class="w"> </span><span class="nv">$p</span><span class="w"> </span>--<span class="w"> </span>stat<span class="w"> </span>-c<span class="w"> </span><span class="s1">'%n major:minor %t:%T %U:%G %a'</span><span class="w"> </span>/dev/asm-disk1<span class="k">)</span><span class="s2">"</span>
+<span class="k">done</span>
+<span class="nb">echo</span><span class="w"> </span><span class="s2">"layer 9  </span><span class="k">$(</span>kubectl<span class="w"> </span>-n<span class="w"> </span>rac<span class="w"> </span><span class="nb">exec</span><span class="w"> </span>racnode1-0<span class="w"> </span>--<span class="w"> </span>su<span class="w"> </span>-<span class="w"> </span>grid<span class="w"> </span>-c<span class="w"> </span><span class="s1">'asmcmd lsdsk -k'</span><span class="w"> </span><span class="p">|</span><span class="w"> </span>grep<span class="w"> </span>asm-disk1<span class="k">)</span><span class="s2">"</span>
+</code></pre></div>
+<p><strong>What you should see:</strong></p>
+<ul>
+<li>layer 1: the first 8 characters of asm1's UUID (it changes every time the disks are created);</li>
+<li>layers 2-3: for each worker, its name, then the <strong>same</strong> by-id name pointing to some <code>../../sdX</code> (the letter may differ), and the device's major:minor in hex (such as <code>8:30</code>);</li>
+<li>layer 4: the PV's path is that by-id name, and the PV is <code>Bound</code>;</li>
+<li>layer 5: the claim is bound to <code>block-asm-disk1-pv-vol1</code>;</li>
+<li>layer 6: <code>{"devicePath":"/dev/asm-disk1","name":"asmvol1"}</code>;</li>
+<li>layers 7-8: in both pods, <code>/dev/asm-disk1</code> with the same major:minor as that worker's disk in layers 2-3, owned <code>grid:asmadmin 660</code>;</li>
+<li>layer 9: ASM lists <code>/dev/asm-disk1</code> as a member of <code>DATA</code>.</li>
+</ul>
+</section>
+<section class="sec"><h2 id="compared-with-udev-rules-on-bare-metal">Compared with udev rules on bare metal</h2>
+<p>On a bare-metal RAC node, a udev rule such as this does three jobs:</p>
+<div class="cmd"><div class="cmd-head"><span class="where file">text</span><span class="where-note"></span></div><button class="copy" type="button" aria-label="Copy commands">Copy</button><pre><code>KERNEL=="sd*", ENV{ID_SERIAL}=="&lt;serial of the LUN&gt;", SYMLINK+="oracleasm/disk1", OWNER="grid", GROUP="asmadmin", MODE="0660"
+</code></pre></div>
+<div class="table-wrap"><table>
+<thead>
+<tr>
+<th>Job</th>
+<th>Bare metal</th>
+<th>This lab</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Find the right disk whatever the kernel calls it</td>
+<td>the rule matches the serial or WWID</td>
+<td>udev's <strong>default</strong> rules create <code>/dev/disk/by-id/...</code> from the serial; the PV points at it (layers 3 and 4)</td>
+</tr>
+<tr>
+<td>Give it a fixed name ASM can discover</td>
+<td><code>SYMLINK+="oracleasm/disk1"</code></td>
+<td><code>devicePath: /dev/asm-disk1</code> in the pod spec (layer 6)</td>
+</tr>
+<tr>
+<td>Owner <code>grid:asmadmin</code>, mode 660</td>
+<td><code>OWNER</code>, <code>GROUP</code>, <code>MODE</code></td>
+<td><code>setupContainerEnv.sh</code> at every pod start (layer 8)</td>
+</tr>
+</tbody>
+</table></div>
+<p><strong>Why a udev rule on the workers wouldn't be enough:</strong></p>
+<ul>
+<li><strong>The pod gets its own device node.</strong> CRI-O creates <code>/dev/asm-disk1</code> inside the container (layer 7). Ownership set on the worker's <code>/dev/sdd</code> doesn't carry over.</li>
+<li><strong>No udev runs inside the pod</strong>, so a rule in the image would never fire.</li>
+<li><strong>The name the database sees comes from the pod spec</strong>, not from the host. <code>/dev/asm-disk1</code> is the same in both pods whatever the disk is called on each worker.</li>
+</ul>
+<p><strong>ASMLib and ASM Filter Driver</strong> are the other bare-metal options. Both need kernel modules on the host and their own disk labels; neither is used in this lab, which follows the doc's approach of plain block devices.</p>
+<p><strong>For a demo audience:</strong> the stable identity is set in two places, <code>/dev/disk/by-id</code> on the host (referenced by the PersistentVolume) and the fixed <code>devicePath</code> in the pod. Ownership and permissions are applied by the image's start-up script, because the container gets its own device node and runs no udev.</p>
+</section>
+<section class="sec"><h2 id="what-goes-wrong-at-each-layer">What goes wrong at each layer</h2>
+<div class="table-wrap"><table>
+<thead>
+<tr>
+<th>Layer</th>
+<th>What goes wrong</th>
+<th>What you see</th>
+<th>Prevention or fix</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>1 VirtualBox</td>
+<td>Disk not marked shareable, or attached to one worker only</td>
+<td>VirtualBox refuses to start the second worker, or the second pod never sees the other's writes</td>
+<td><code>--type shareable</code> and <code>--mtype shareable</code> on both workers; guide 3.3's check covers both disks</td>
+</tr>
+<tr>
+<td>1 VirtualBox</td>
+<td>Snapshot of a worker</td>
+<td>VirtualBox refuses</td>
+<td>Don't snapshot the workers; snapshot the golden VM instead</td>
+</tr>
+<tr>
+<td>2 Kernel</td>
+<td>Formatting by <code>sdX</code> name</td>
+<td>A shared ASM disk gets formatted (issue #7, caught in time)</td>
+<td>Data disks chosen by size (guide 4.3/4.4, steps d and e)</td>
+</tr>
+<tr>
+<td>3 udev</td>
+<td>PV points at a name that doesn't exist on a worker</td>
+<td>Pod stuck in <code>ContainerCreating</code>, with an event saying the path doesn't exist</td>
+<td>Guide 7.2 checks both workers see the same by-id names</td>
+</tr>
+<tr>
+<td>4 PV</td>
+<td>Placeholder or wrong ID in the PV</td>
+<td>Same as above, or, worse, a valid name of the wrong disk</td>
+<td>Guide 7.2/7.3 fill the IDs in automatically (issue #14)</td>
+</tr>
+<tr>
+<td>4 PV</td>
+<td><code>nodeAffinity</code> lists one worker only</td>
+<td>The second RAC pod stays <code>Pending</code></td>
+<td>List both workers</td>
+</tr>
+<tr>
+<td>5 PVC</td>
+<td>No label selector</td>
+<td>Claim 1 may bind to disk 2. ASM would still find its disks by their headers, but <code>/dev/asm-disk1</code> would no longer be asm1.vdi, which makes tracing confusing</td>
+<td><code>selector</code> on <code>asm_vol</code></td>
+</tr>
+<tr>
+<td>6 Pod spec</td>
+<td><code>volumeMounts</code> instead of <code>volumeDevices</code>, or <code>volumeMode</code> missing</td>
+<td>Pod fails to start: the volume mode doesn't match</td>
+<td><code>volumeMode: Block</code> in PV and PVC, <code>volumeDevices</code> in the pod</td>
+</tr>
+<tr>
+<td>7 Runtime</td>
+<td>Device not allowed in the cgroup (e.g. a hand-made <code>mknod</code> in the pod)</td>
+<td>"Operation not permitted" opening the device, even as root</td>
+<td>Only use devices listed in <code>volumeDevices</code></td>
+</tr>
+<tr>
+<td>8 Ownership</td>
+<td>Script didn't run, or the image lacks it</td>
+<td>Devices <code>root:root</code> (or <code>root:disk</code>); ASM can't open them; the Grid install can't find candidate disks</td>
+<td><code>setupContainerEnv.sh</code> in the image; guide 10.5 checks <code>grid:asmadmin 660</code></td>
+</tr>
+<tr>
+<td>9 ASM</td>
+<td>Disks still carry an old ASM header</td>
+<td>The Grid install says the disks are already in use</td>
+<td>Delete and recreate the VDIs (guide 0.0 and 3.3)</td>
+</tr>
+</tbody>
+</table></div>
+</section>
+<section class="sec"><h2 id="in-production">In production</h2>
+<p>The lab keeps the chain as short as possible. In production the same layers exist, with sturdier pieces:</p>
+<ul>
+<li><strong>Layer 1:</strong> SAN LUNs (Fibre Channel or iSCSI) or NVMe-oF namespaces, presented to every worker that can run a RAC pod.</li>
+<li><strong>Layers 2-3:</strong> multipath. Each LUN reaches the worker by several paths, and <code>multipathd</code> combines them into one device such as <code>/dev/mapper/&lt;wwid&gt;</code>, with a matching <code>/dev/disk/by-id/dm-uuid-mpath-&lt;wwid&gt;</code> link. The PV then points at the multipath device, never at a single path.</li>
+<li><strong>Layer 4:</strong> either the same static local PVs, created per LUN, or a <strong>CSI driver</strong> from the storage vendor that supports raw block volumes with <code>ReadWriteMany</code>. CSI can create volumes on demand from a StorageClass. Check the driver supports shared block access before relying on it for RAC.</li>
+<li><strong>Layer 8:</strong> the same idea, ownership applied in the container at start. Some teams use an init container or the runtime's device ownership settings instead of a script.</li>
+<li><strong>Layer 9:</strong> usually NORMAL or HIGH redundancy across failure groups, or EXTERNAL when the array already provides RAID; several disk groups (data, recovery area) rather than one.</li>
+</ul>
+<p>What doesn't change is the principle the lab demonstrates: the host finds the disk by a stable identity, Kubernetes maps it to a fixed name in the pod, and ASM and RAC, not Kubernetes, coordinate the shared access.</p></section>
+  <footer class="foot">Built from the lab's build log and scripts (rac-k8s-poc). Values are from the author's lab; change them to match yours.</footer>
+  </main>
+</div>
+</div>
+<script>(function () {
+  // Copy buttons: copy the commands without the "where" label
+  document.querySelectorAll('.cmd').forEach(function (box) {
+    var btn = box.querySelector('.copy'), code = box.querySelector('pre code');
+    if (!btn || !code) return;
+    btn.addEventListener('click', function () {
+      var text = code.innerText.replace(/\n$/, '');
+      var done = function () { btn.textContent = 'Copied'; btn.classList.add('done'); setTimeout(function () { btn.textContent = 'Copy'; btn.classList.remove('done'); }, 1600); };
+      var fallback = function () {
+        var r = document.createRange(); r.selectNodeContents(code);
+        var s = window.getSelection(); s.removeAllRanges(); s.addRange(r);
+        btn.textContent = 'Selected: press Ctrl+C';
+      };
+      try {
+        if (navigator.clipboard && navigator.clipboard.writeText) navigator.clipboard.writeText(text).then(done, fallback);
+        else fallback();
+      } catch (e) { fallback(); }
+    });
+  });
+  // Highlight the current section in the contents
+  var links = Array.prototype.slice.call(document.querySelectorAll('.toc a'));
+  var map = {};
+  links.forEach(function (a) { map[a.getAttribute('href').slice(1)] = a; });
+  if ('IntersectionObserver' in window) {
+    var obs = new IntersectionObserver(function (entries) {
+      entries.forEach(function (e) {
+        if (e.isIntersecting) {
+          links.forEach(function (a) { a.classList.remove('active'); });
+          var a = map[e.target.id]; if (a) a.classList.add('active');
+        }
+      });
+    }, { rootMargin: '0px 0px -75% 0px' });
+    document.querySelectorAll('.sec h2[id]').forEach(function (h) { obs.observe(h); });
+  }
+  // Collapse the contents by default on narrow screens
+  if (window.matchMedia && window.matchMedia('(max-width: 960px)').matches) {
+    var d = document.querySelector('.toc details'); if (d) d.removeAttribute('open');
+  }
+})();
+(function () {
+  document.querySelectorAll('.copy-mini').forEach(function (b) {
+    b.addEventListener('click', function () {
+      var t = b.getAttribute('data-copy');
+      var ok = function () { b.textContent = 'Copied'; b.classList.add('done'); setTimeout(function () { b.textContent = 'Copy'; b.classList.remove('done'); }, 1600); };
+      try { if (navigator.clipboard && navigator.clipboard.writeText) navigator.clipboard.writeText(t).then(ok, function () { b.textContent = 'Select and copy'; }); else b.textContent = 'Select and copy'; } catch (e) { b.textContent = 'Select and copy'; }
+    });
+  });
+})();
+</script>
+
+</body>
+</html>

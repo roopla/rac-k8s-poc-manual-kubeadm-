@@ -1,0 +1,10 @@
+# keys and secrets
+k8s_azure_lab
+*.pem
+id_rsa*
+*.key
+# Oracle's copyrighted doc and big binaries
+oracle-real-application-clusters-*.pdf
+*.zip
+*.iso
+*.vdi

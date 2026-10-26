@@ -1,0 +1,111 @@
+# rac2_sts.yaml - Oracle RAC node 2 StatefulSet (Oracle doc, "Create the Oracle RAC Pods" step 10).
+# Changes from the doc (see the build guide's delta table):
+#   - nodeAffinity worker2 (doc: worker-2)
+#   - image localhost/oracle/database-rac:19-ol9-slim, imagePullPolicy IfNotPresent (doc: Always)
+#   - resources: 12Gi memory, 3 CPU, 4Gi hugepages (doc: 16Gi, 4, 8Gi) to fit 22 GB / 4 vCPU workers
+#   - Multus IPs written with /24
+#   - /mnt/.ssh mounted readOnly: true (the doc says it must be read-only)
+#   - selector also matches hostname=racnode2-0; the doc's two StatefulSets share selector
+#     cluster=racnode, which overlaps (Kubernetes warns against overlapping selectors)
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  labels:
+    cluster: racnode
+    hostname: racnode2-0
+  name: racnode2
+  namespace: rac
+spec:
+  selector:
+    matchLabels:
+      cluster: racnode
+      hostname: racnode2-0
+  serviceName: racnode
+  template:
+    metadata:
+      annotations:
+        k8s.v1.cni.cncf.io/networks: '[
+            {"name":"macvlan-conf1","namespace":"multus-rac","interface":"eth1","ips":["10.0.11.142/24"]},
+            {"name":"macvlan-conf2","namespace":"multus-rac","interface":"eth2","ips":["10.0.12.142/24"]}
+          ]'
+      labels:
+        cluster: racnode
+        hostname: racnode2-0
+    spec:
+     securityContext:
+       sysctls:
+        - name: kernel.shmall
+          value: "2097152"
+        - name: kernel.sem
+          value: "250 32000 100 128"
+        - name: kernel.shmmax
+          value: "8589934592"
+        - name: kernel.shmmni
+          value: "4096"
+        - name: net.ipv4.conf.all.rp_filter
+          value: "2"
+     affinity:
+        nodeAffinity:
+          requiredDuringSchedulingIgnoredDuringExecution:
+            nodeSelectorTerms:
+              - matchExpressions:
+                - key: kubernetes.io/hostname
+                  operator: In
+                  values:
+                    - worker2
+     volumes:
+       - name: myshm
+         emptyDir:
+          medium: Memory
+       - name: swvol-racnode2
+         hostPath:
+          path: /scratch/rac/cluster01/node2
+       - name: asmvol1
+         persistentVolumeClaim:
+          claimName: block-asm-pvc-vol1
+       - name: asmvol2
+         persistentVolumeClaim:
+          claimName: block-asm-pvc-vol2
+       - name: sshkeys
+         secret:
+          secretName: ssh-key-secret
+     containers:
+       - name: racnode2-0
+         image: localhost/oracle/database-rac:19-ol9-slim
+         imagePullPolicy: IfNotPresent
+         resources:
+          requests:
+           memory: "12Gi"
+           cpu: "3"
+          limits:
+           hugepages-2Mi: "4Gi"
+           memory: "12Gi"
+           cpu: "3"
+         securityContext:
+          privileged: false
+          capabilities:
+           add: ["NET_ADMIN", "NET_RAW", "SYS_CHROOT", "SYS_NICE", "SYS_RESOURCE", "AUDIT_WRITE", "AUDIT_CONTROL"]
+         lifecycle:
+          preStop:
+           exec:
+            command: ["/bin/bash","-c","kill -SIGRTMIN+3 1"]
+         command: [/usr/sbin/init]
+         volumeDevices:
+           - name: asmvol1
+             devicePath: /dev/asm-disk1
+           - name: asmvol2
+             devicePath: /dev/asm-disk2
+         readinessProbe:
+            tcpSocket:
+              port: 1521
+            initialDelaySeconds: 10
+            periodSeconds: 30
+            failureThreshold: 1
+         volumeMounts:
+         - mountPath: "/dev/shm"
+           name: myshm
+         - mountPath: /u01
+           name: swvol-racnode2
+         - mountPath: /mnt/.ssh
+           name: sshkeys
+           readOnly: true
