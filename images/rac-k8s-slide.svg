@@ -1,0 +1,37 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 760 412" role="img" aria-label="Oracle RAC 19c on Kubernetes: two pods, one cluster"><style>text{font-family:'Segoe UI',Inter,'Helvetica Neue',Arial,sans-serif}.bg{fill:#ffffff}.d-box{fill:none;stroke:#57636f;stroke-width:1.25}.d-pod{fill:#e1f0f1;stroke:#0b6e78;stroke-width:2}.d-band{fill:#eef2f4;stroke:#d5dbe1;stroke-width:1}.d-line path{stroke:#57636f;stroke-width:1.25}.d-arrowhead{fill:#57636f}.d-title{font-weight:700;font-size:15px;fill:#17212b}.d-name{font-size:13px;font-weight:700;fill:#17212b}.d-text{font-size:11.5px;fill:#17212b}.d-quiet{font-size:11.5px;fill:#57636f}@media (prefers-color-scheme: dark){.bg{fill:#141c23}.d-box{fill:none;stroke:#9caab6;stroke-width:1.25}.d-pod{fill:#123239;stroke:#55bcc6;stroke-width:2}.d-band{fill:#18222b;stroke:#2a3641;stroke-width:1}.d-line path{stroke:#9caab6;stroke-width:1.25}.d-arrowhead{fill:#9caab6}.d-title{font-weight:700;font-size:15px;fill:#e3e9ee}.d-name{font-size:13px;font-weight:700;fill:#e3e9ee}.d-text{font-size:11.5px;fill:#e3e9ee}.d-quiet{font-size:11.5px;fill:#9caab6}}</style><rect class="bg" x="0" y="0" width="760" height="412" rx="12"/>
+<defs><marker id="slide-arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path class="d-arrowhead" d="M0 0L10 5L0 10z"/></marker></defs>
+<text class="d-title" x="24" y="34">Oracle RAC 19c on Kubernetes: two pods, one cluster</text>
+<g class="d-line"><path d="M380 100V124" fill="none"/><path d="M24 124H736" fill="none"/><path d="M112 124V148" fill="none"/><path d="M334 124V148" fill="none"/><path d="M618 124V148" fill="none"/><path d="M436 220H516" fill="none"/><path d="M436 244H516" fill="none"/><path d="M334 308V332" fill="none"/><path d="M618 308V332" fill="none"/><path d="M112 268V332" fill="none"/></g>
+<rect class="d-box" x="24" y="52" width="712" height="48" rx="8"/>
+<text class="d-name" x="40" y="74">Windows PC · VirtualBox</text>
+<text class="d-text" x="40" y="92">clients and SSH reach the lab through NAT port forwards</text>
+<text class="d-quiet" x="392" y="117" text-anchor="start">public network 10.0.1.0/24</text>
+<rect class="d-box" x="24" y="148" width="176" height="120" rx="8"/>
+<text class="d-name" x="40" y="170">controlplane</text>
+<text class="d-text" x="40" y="188">Kubernetes API, etcd</text>
+<text class="d-text" x="40" y="204">scheduler, CoreDNS</text>
+<text class="d-text" x="40" y="220">StatefulSet controller</text>
+<rect class="d-box" x="216" y="148" width="236" height="160" rx="8"/>
+<text class="d-name" x="232" y="170">worker1</text>
+<rect class="d-box" x="500" y="148" width="236" height="160" rx="8"/>
+<text class="d-name" x="516" y="170">worker2</text>
+<rect class="d-pod" x="232" y="180" width="204" height="104" rx="8"/>
+<text class="d-name" x="248" y="202">Pod racnode1-0</text>
+<text class="d-text" x="248" y="220">Grid Infrastructure</text>
+<text class="d-text" x="248" y="236">ASM +ASM1</text>
+<text class="d-text" x="248" y="252">instance ORCLCDB1</text>
+<text class="d-text" x="248" y="268">SCAN listener 1</text>
+<rect class="d-pod" x="516" y="180" width="204" height="104" rx="8"/>
+<text class="d-name" x="532" y="202">Pod racnode2-0</text>
+<text class="d-text" x="532" y="220">Grid Infrastructure</text>
+<text class="d-text" x="532" y="236">ASM +ASM2</text>
+<text class="d-text" x="532" y="252">instance ORCLCDB2</text>
+<text class="d-text" x="532" y="268">SCAN listener 2</text>
+<text class="d-quiet" x="476" y="324" text-anchor="middle">interconnect: 2 private networks</text>
+<rect class="d-band" x="24" y="332" width="176" height="56" rx="8"/>
+<text class="d-name" x="40" y="354">Kubernetes objects</text>
+<text class="d-text" x="40" y="372">8 Services · 2 StatefulSets</text>
+<rect class="d-box" x="216" y="332" width="520" height="56" rx="8"/>
+<text class="d-name" x="232" y="354">Shared ASM disks → disk group DATA</text>
+<text class="d-text" x="232" y="372">database, cluster registry and voting files, used by both pods at once</text>
+</svg>

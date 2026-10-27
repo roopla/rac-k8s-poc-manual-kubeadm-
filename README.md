@@ -1,5 +1,9 @@
 # Oracle RAC 19c on kubeadm: VirtualBox PoC lab
 
+![System design: Windows, three VMs, two RAC pods, Kubernetes objects and shared storage](images/rac-k8s-system.svg)
+
+Learning guides: [step-by-step build](index.html) ([PDF](rac-k8s-learning-guide.pdf)) · [golden image](rac-k8s-golden-image-guide.html) · [ASM device chain](rac-k8s-asm-device-chain.html) · [Services](rac-k8s-services.html) · [StatefulSet](rac-k8s-statefulset.html)
+
 One command builds the whole lab on a Windows host with VirtualBox, from the Oracle Linux 9.8 ISO to a
 validated three-node cluster:
 

@@ -1,0 +1,79 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 760 776" role="img" aria-label="Two RAC pods on two workers; Kubernetes supplies their names, networks and disks"><style>text{font-family:'Segoe UI',Inter,'Helvetica Neue',Arial,sans-serif}.bg{fill:#ffffff}.d-box{fill:none;stroke:#57636f;stroke-width:1.25}.d-pod{fill:#e1f0f1;stroke:#0b6e78;stroke-width:2}.d-band{fill:#eef2f4;stroke:#d5dbe1;stroke-width:1}.d-line path{stroke:#57636f;stroke-width:1.25}.d-arrowhead{fill:#57636f}.d-title{font-weight:700;font-size:15px;fill:#17212b}.d-name{font-size:13px;font-weight:700;fill:#17212b}.d-text{font-size:11.5px;fill:#17212b}.d-quiet{font-size:11.5px;fill:#57636f}@media (prefers-color-scheme: dark){.bg{fill:#141c23}.d-box{fill:none;stroke:#9caab6;stroke-width:1.25}.d-pod{fill:#123239;stroke:#55bcc6;stroke-width:2}.d-band{fill:#18222b;stroke:#2a3641;stroke-width:1}.d-line path{stroke:#9caab6;stroke-width:1.25}.d-arrowhead{fill:#9caab6}.d-title{font-weight:700;font-size:15px;fill:#e3e9ee}.d-name{font-size:13px;font-weight:700;fill:#e3e9ee}.d-text{font-size:11.5px;fill:#e3e9ee}.d-quiet{font-size:11.5px;fill:#9caab6}}</style><rect class="bg" x="0" y="0" width="760" height="776" rx="12"/>
+<defs><marker id="sys-arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path class="d-arrowhead" d="M0 0L10 5L0 10z"/></marker></defs>
+<text class="d-title" x="24" y="34">Two RAC pods on two workers; Kubernetes supplies their names, networks and disks</text>
+<g class="d-line"><path d="M380 144V168" fill="none"/><path d="M24 168H736" fill="none"/><path d="M112 168V192" fill="none"/><path d="M334 168V192" fill="none"/><path d="M618 168V192" fill="none"/><path d="M436 336H516" fill="none"/><path d="M436 368H516" fill="none"/><path d="M334 496V520" fill="none"/><path d="M618 496V520" fill="none"/><path d="M112 360V616" fill="none"/></g>
+<rect class="d-box" x="24" y="56" width="712" height="88" rx="8"/>
+<text class="d-name" x="40" y="78">Windows PC · VirtualBox 7 · Git Bash and PowerShell</text>
+<text class="d-text" x="40" y="96">SSH → 127.0.0.1:2210 controlplane, :2211 worker1, :2212 worker2 (NAT port forwards)</text>
+<text class="d-text" x="40" y="112">Python client → 127.0.0.1:30200 (SCAN), then :30203 or :30204 (port forwards to worker1)</text>
+<text class="d-text" x="40" y="128">hosts file: racnode1-0-vip…, racnode2-0-vip… → 127.0.0.1, for the SCAN redirect</text>
+<text class="d-quiet" x="392" y="161" text-anchor="start">k8s-public 10.0.1.0/24 · VirtualBox NAT Network</text>
+<rect class="d-box" x="24" y="192" width="176" height="168" rx="8"/>
+<text class="d-name" x="40" y="214">controlplane</text>
+<text class="d-text" x="40" y="232">10.0.1.10 · 2 vCPU · 4 GB</text>
+<text class="d-text" x="40" y="248"></text>
+<text class="d-text" x="40" y="264">kube-apiserver · etcd</text>
+<text class="d-text" x="40" y="280">scheduler</text>
+<text class="d-text" x="40" y="296">controller-manager</text>
+<text class="d-text" x="40" y="312">  (runs the StatefulSets)</text>
+<text class="d-text" x="40" y="328">CoreDNS (the RAC names)</text>
+<text class="d-text" x="40" y="344">kubelet · CRI-O · Flannel</text>
+<rect class="d-box" x="216" y="192" width="236" height="304" rx="8"/>
+<text class="d-name" x="232" y="214">worker1 · 10.0.1.11</text>
+<text class="d-text" x="232" y="232">4 vCPU · 22 GB · 2048 hugepages</text>
+<text class="d-text" x="232" y="248">kubelet · CRI-O · kube-proxy</text>
+<text class="d-text" x="232" y="264">Flannel eth0 · Multus macvlan</text>
+<text class="d-text" x="232" y="280">/scratch …/node1 → /u01 (hostPath)</text>
+<rect class="d-box" x="500" y="192" width="236" height="304" rx="8"/>
+<text class="d-name" x="516" y="214">worker2 · 10.0.1.12</text>
+<text class="d-text" x="516" y="232">4 vCPU · 22 GB · 2048 hugepages</text>
+<text class="d-text" x="516" y="248">kubelet · CRI-O · kube-proxy</text>
+<text class="d-text" x="516" y="264">Flannel eth0 · Multus macvlan</text>
+<text class="d-text" x="516" y="280">/scratch …/node2 → /u01 (hostPath)</text>
+<rect class="d-pod" x="232" y="296" width="204" height="184" rx="8"/>
+<text class="d-name" x="248" y="318">Pod racnode1-0 (systemd)</text>
+<text class="d-text" x="248" y="336">eth0 pod IP · public net</text>
+<text class="d-text" x="248" y="352">eth1 .11.141 · eth2 .12.141</text>
+<text class="d-text" x="248" y="368">Clusterware: ohasd CSS CRS</text>
+<text class="d-text" x="248" y="384">ASM +ASM1 · disk group DATA</text>
+<text class="d-text" x="248" y="400">LISTENER_SCAN1 :1521</text>
+<text class="d-text" x="248" y="416">LISTENER :1522 (local)</text>
+<text class="d-text" x="248" y="432">db-lsnr :30203 (NodePort)</text>
+<text class="d-text" x="248" y="448">instance ORCLCDB1 · ORCLPDB</text>
+<text class="d-text" x="248" y="464">/u01 · /dev/asm-disk1, 2</text>
+<rect class="d-pod" x="516" y="296" width="204" height="184" rx="8"/>
+<text class="d-name" x="532" y="318">Pod racnode2-0 (systemd)</text>
+<text class="d-text" x="532" y="336">eth0 pod IP · public net</text>
+<text class="d-text" x="532" y="352">eth1 .11.142 · eth2 .12.142</text>
+<text class="d-text" x="532" y="368">Clusterware: ohasd CSS CRS</text>
+<text class="d-text" x="532" y="384">ASM +ASM2 · disk group DATA</text>
+<text class="d-text" x="532" y="400">LISTENER_SCAN2 :1521</text>
+<text class="d-text" x="532" y="416">LISTENER :1522 (local)</text>
+<text class="d-text" x="532" y="432">db-lsnr :30204 (NodePort)</text>
+<text class="d-text" x="532" y="448">instance ORCLCDB2 · ORCLPDB</text>
+<text class="d-text" x="532" y="464">/u01 · /dev/asm-disk1, 2</text>
+<text class="d-quiet" x="476" y="330" text-anchor="middle">priv1</text>
+<text class="d-quiet" x="476" y="362" text-anchor="middle">priv2</text>
+<text class="d-quiet" x="476" y="512" text-anchor="middle">priv1 + priv2 = RAC interconnect (Multus)</text>
+<rect class="d-box" x="216" y="520" width="520" height="72" rx="8"/>
+<text class="d-name" x="232" y="542">Shared ASM disks asm1 + asm2 (50 GB each, VirtualBox shareable)</text>
+<text class="d-text" x="232" y="560">the same disks on both workers → Block PVs by /dev/disk/by-id → both pods</text>
+<text class="d-text" x="232" y="576">disk group DATA: cluster registry (OCR), voting files, database ORCLCDB</text>
+<rect class="d-band" x="24" y="616" width="712" height="136" rx="8"/>
+<text class="d-name" x="40" y="638">Kubernetes objects in namespace rac (stored on controlplane, used by the pods)</text>
+<rect class="d-box" x="40" y="648" width="216" height="88" rx="8"/>
+<text class="d-name" x="56" y="670">5 headless Services</text>
+<text class="d-text" x="56" y="688">racnode1-0, racnode2-0</text>
+<text class="d-text" x="56" y="704">racnode1-0-vip, racnode2-0-vip</text>
+<text class="d-text" x="56" y="720">racnode-scan (both pods)</text>
+<rect class="d-box" x="272" y="648" width="216" height="88" rx="8"/>
+<text class="d-name" x="288" y="670">3 NodePort Services</text>
+<text class="d-text" x="288" y="688">30200 → SCAN listeners :1521</text>
+<text class="d-text" x="288" y="704">30203 → racnode1-0 db-lsnr</text>
+<text class="d-text" x="288" y="720">30204 → racnode2-0 db-lsnr</text>
+<rect class="d-box" x="504" y="648" width="216" height="88" rx="8"/>
+<text class="d-name" x="520" y="670">StatefulSets and the rest</text>
+<text class="d-text" x="520" y="688">racnode1, racnode2 (1 pod each)</text>
+<text class="d-text" x="520" y="704">PVCs block-asm-pvc-vol1, vol2</text>
+<text class="d-text" x="520" y="720">Secret · Multus NADs</text>
+</svg>
